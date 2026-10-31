@@ -20,17 +20,10 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Ensure Android NDK r25c
-        run: |
-          if [ ! -d "${ANDROID_HOME}/ndk/25.2.9519653" ]; then
-            echo "Installing NDK 25.2.9519653..."
-            echo "y" | ${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager "ndk;25.2.9519653"
-          else
-            echo "NDK 25.2.9519653 is already present."
-          fi
+      - name: Setup Android NDK
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r25c
 
       - name: Make gradlew executable
         run: chmod +x scanner/gradlew
