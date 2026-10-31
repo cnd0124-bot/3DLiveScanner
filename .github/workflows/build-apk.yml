@@ -1,0 +1,53 @@
+name: Build Optimized 3D Live Scanner APK
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Ensure Android NDK r25c
+        run: |
+          if [ ! -d "${ANDROID_HOME}/ndk/25.2.9519653" ]; then
+            echo "Installing NDK 25.2.9519653..."
+            echo "y" | ${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager "ndk;25.2.9519653"
+          else
+            echo "NDK 25.2.9519653 is already present."
+          fi
+
+      - name: Make gradlew executable
+        run: chmod +x scanner/gradlew
+
+      - name: Extract Native ARCore Libraries
+        run: |
+          cd scanner
+          ./gradlew extractNativeLibraries
+
+      - name: Build Debug APK
+        run: |
+          cd scanner
+          ./gradlew assembleDebug --stacktrace
+
+      - name: Upload APK to Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: 3DLiveScanner-Optimized-Debug-APK
+          path: scanner/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error

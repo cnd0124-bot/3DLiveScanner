@@ -1,3 +1,4 @@
+#include <fstream>
 #include <data/file3d.h>
 #include <exporter/floorpln.h>
 
@@ -146,6 +147,43 @@ void ExporterFloorplan::Export(std::string output)
     std::vector<Mesh> model;
     model.push_back(mesh);
     File3d(output + "floorplan.obj", true).WriteModel(model);
+
+    // Export 2D CAD Vector (DXF format)
+    std::ofstream dxf(output + "floorplan.dxf");
+    if (dxf.is_open())
+    {
+        dxf << "0\nSECTION\n2\nENTITIES\n";
+        for (p.x = min.x; p.x < max.x; p.x++)
+        {
+            for (p.z = min.z; p.z < max.z; p.z++)
+            {
+                if (heightmap.find(p) != heightmap.end())
+                {
+                    FloorPlanPoint right;
+                    right.x = p.x + 1;
+                    right.z = p.z;
+                    FloorPlanPoint down;
+                    down.x = p.x;
+                    down.z = p.z + 1;
+
+                    if (heightmap.find(right) == heightmap.end())
+                    {
+                        dxf << "0\nLINE\n8\nWALLS\n";
+                        dxf << "10\n" << (p.x + 1) << "\n20\n" << (p.z) << "\n30\n0.0\n";
+                        dxf << "11\n" << (p.x + 1) << "\n21\n" << (p.z + 1) << "\n31\n0.0\n";
+                    }
+                    if (heightmap.find(down) == heightmap.end())
+                    {
+                        dxf << "0\nLINE\n8\nWALLS\n";
+                        dxf << "10\n" << (p.x) << "\n20\n" << (p.z + 1) << "\n30\n0.0\n";
+                        dxf << "11\n" << (p.x + 1) << "\n21\n" << (p.z + 1) << "\n31\n0.0\n";
+                    }
+                }
+            }
+        }
+        dxf << "0\nENDSEC\n0\nEOF\n";
+        dxf.close();
+    }
 }
 
 void ExporterFloorplan::FillHoles()
