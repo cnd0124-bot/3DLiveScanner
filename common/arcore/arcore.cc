@@ -25,29 +25,34 @@ namespace oc {
 
             ArConfig *ar_config = nullptr;
             ArConfig_create(ar_session_, &ar_config);
-            ArConfig_setFocusMode(ar_session_, ar_config, AR_FOCUS_MODE_AUTO);
-            ArConfig_setPlaneFindingMode(ar_session_, ar_config, AR_PLANE_FINDING_MODE_HORIZONTAL_AND_VERTICAL);
+            ArConfig_setFocusMode(ar_session_, ar_config, AR_FOCUS_MODE_FIXED);
+            ArConfig_setPlaneFindingMode(ar_session_, ar_config, AR_PLANE_FINDING_MODE_DISABLED);
             if (faceMode) {
                 ArConfig_setAugmentedFaceMode(ar_session_, ar_config, AR_AUGMENTED_FACE_MODE_MESH3D);
                 useDepth = false;
                 useDepthRaw = false;
             } else {
+                useDepthRaw = true;
                 if (depthCamera && rawSupported) {
                     ArConfig_setDepthMode(ar_session_, ar_config, AR_DEPTH_MODE_RAW_DEPTH_ONLY);
                     useDepth = true;
-                    useDepthRaw = true;
                 } else if (autoSupported) {
                     ArConfig_setDepthMode(ar_session_, ar_config, AR_DEPTH_MODE_AUTOMATIC);
                     useDepth = true;
-                    useDepthRaw = false;
                 } else if (rawSupported) {
                     ArConfig_setDepthMode(ar_session_, ar_config, AR_DEPTH_MODE_RAW_DEPTH_ONLY);
                     useDepth = true;
-                    useDepthRaw = true;
                 } else {
-                    ArConfig_setDepthMode(ar_session_, ar_config, AR_DEPTH_MODE_DISABLED);
-                    useDepth = false;
-                    useDepthRaw = false;
+                    int alwaysSupported = 0;
+                    ArSession_isDepthModeSupported(ar_session_, AR_DEPTH_MODE_ALWAYS_ENABLED, &alwaysSupported);
+                    if (alwaysSupported) {
+                        ArConfig_setDepthMode(ar_session_, ar_config, AR_DEPTH_MODE_ALWAYS_ENABLED);
+                        useDepth = true;
+                    } else {
+                        ArConfig_setDepthMode(ar_session_, ar_config, AR_DEPTH_MODE_DISABLED);
+                        useDepth = false;
+                        useDepthRaw = false;
+                    }
                 }
             }
             ArConfig_setUpdateMode(ar_session_, ar_config, AR_UPDATE_MODE_BLOCKING);
@@ -108,6 +113,12 @@ namespace oc {
     void ARCore::Configure(void *session, void *frame) {
         ar_session_ = static_cast<ArSession *>(session);
         ar_frame_ = static_cast<ArFrame *>(frame);
+
+        int out_is_supported = 0;
+        ArSession_isDepthModeSupported(ar_session_, AR_DEPTH_MODE_AUTOMATIC, &out_is_supported);
+        if (out_is_supported != 0) {
+            useDepth = true;
+        }
     }
 
     float ARCore::CountFrameError() {
@@ -181,8 +192,7 @@ namespace oc {
         if (face_mode_) {
             return true;
         } else if (ar_anchor_list.empty()) {
-            UpdateAnchor();
-            return true;
+            return UpdateAnchor();
         } else {
             return true;
         }
@@ -583,7 +593,10 @@ namespace oc {
     }
 
     void ARCore::UpdateFeaturePoints() {
-        UpdateAnchor();
+        if (!UpdateAnchor()) {
+            points.clear();
+            return;
+        }
 
         std::vector<glm::vec4> feature_points;
         ArPointCloud *ar_point_cloud = nullptr;
@@ -603,7 +616,7 @@ namespace oc {
         }
 
         std::vector<glm::vec4> depth_points;
-        if (useDepth) {
+        if (useDepth && number_of_points > 0) {
             camera.InitARCore(ar_session_, ar_frame_);
 
             ArImage* image = 0;
@@ -614,25 +627,30 @@ namespace oc {
             if (result != AR_SUCCESS) {
                 result = ArFrame_acquireDepthImage(ar_session_, ar_frame_, &image);
             }
-            if (result == AR_SUCCESS) {
+            if (result == AR_SUCCESS && image != nullptr) {
 
-                    uint8_t* confidenceData;
+                    uint8_t* confidenceData = nullptr;
                     ArImage* confidenceImage = 0;
                     bool hasConfidence = false;
                     if (useDepthRaw) {
-                        result = ArFrame_acquireRawDepthConfidenceImage(ar_session_, ar_frame_, &confidenceImage);;
-                        if (result == AR_SUCCESS) {
-                            int32_t dataLength;
+                        result = ArFrame_acquireRawDepthConfidenceImage(ar_session_, ar_frame_, &confidenceImage);
+                        if (result == AR_SUCCESS && confidenceImage != nullptr) {
+                            int32_t dataLength = 0;
                             ArImage_getPlaneData(ar_session_, confidenceImage, 0, (const uint8_t**)&confidenceData, &dataLength);
-                            hasConfidence = true;
+                            if (confidenceData != nullptr) {
+                                hasConfidence = true;
+                            } else {
+                                ArImage_release(confidenceImage);
+                                confidenceImage = 0;
+                            }
                         }
                     }
 
                     //get depth data
-                    uint16_t* imgData;
-                    int64_t timestamp;
-                    int32_t dataLength;
-                    int32_t depthWidth, depthHeight, stride;
+                    uint16_t* imgData = nullptr;
+                    int64_t timestamp = 0;
+                    int32_t dataLength = 0;
+                    int32_t depthWidth = 0, depthHeight = 0, stride = 0;
                     ArImage_getPlaneRowStride(ar_session_, image, 0, &stride);
                     ArImage_getPlaneData(ar_session_, image, 0, (const uint8_t**)&imgData, &dataLength);
                     ArImage_getWidth(ar_session_, image, &depthWidth);
@@ -653,7 +671,7 @@ namespace oc {
                             ArImage_getPlaneData(ar_session_, image2, 0, (const uint8_t**)&imgData2, &dataLength2);
                             ArImage_getWidth(ar_session_, image2, &depthWidth2);
                             ArImage_getHeight(ar_session_, image2, &depthHeight2);
-                            if (depthWidth2 == depthWidth && depthHeight2 == depthHeight && imgData2 != nullptr) {
+                            if (imgData2 != nullptr && depthWidth2 > 0 && depthHeight2 > 0 && stride2 > 0) {
                                 hasSecondary = true;
                             } else {
                                 ArImage_release(image2);
@@ -662,179 +680,189 @@ namespace oc {
                         }
                     }
 
-                    //convert depthmap to pointcloud
-                    int minConfidence = has_depth_sensor ? 32 : 128;
-                    float maxErrorFilter = resolution * 3.0f;
-                    float maxErrorHoles = resolution * 3.0f;
-                    float maxErrorWalls = resolution * 3.0f;
-                    double len = 100 - 0.001f; //far - near
-                    std::vector<glm::vec3> refused;
-                    std::map<std::pair<int, int>, double> edges2d;
-                    glm::vec3 cam = glm::inverse(view_mat)[3];
-                    glm::dmat4 screen2world = glm::inverse(projection_mat * view_mat);
-                    if (!has_depth_sensor || (lastDepthTimestamp != timestamp)) {
+                    if (imgData != nullptr && depthWidth > 0 && depthHeight > 0 && stride > 0) {
+                        //convert depthmap to pointcloud
+                        int minConfidence = has_depth_sensor ? 32 : 128;
+                        float maxErrorFilter = resolution * 3.0f;
+                        float maxErrorHoles = resolution * 3.0f;
+                        float maxErrorWalls = resolution * 3.0f;
+                        double len = 100 - 0.001f; //far - near
+                        std::vector<glm::vec3> refused;
+                        std::map<std::pair<int, int>, double> edges2d;
+                        glm::vec3 cam = glm::inverse(view_mat)[3];
+                        glm::dmat4 screen2world = glm::inverse(projection_mat * view_mat);
+                        if (!has_depth_sensor || (lastDepthTimestamp != timestamp)) {
 
-                        float maxY = INT_MIN;
-                        std::map<int, float> distances;
-                        std::map<std::pair<int, int>, float> distancesLocal;
-                        float s = 1;
-                        int m = has_depth_sensor ? (depthWidth - depthHeight) / 2 : 0;
-                        if (depthWidth > 240) s = depthWidth / 240.0f;
-                        for (float fy = 0; fy < depthHeight; fy += s) {
-                            for (float fx = m; fx < depthWidth - m; fx += s) {
-                                int x = (int)fx;
-                                int y = (int)fy;
-                                if ((x < 4) && (y == 0))
-                                    continue;
+                            float maxY = INT_MIN;
+                            std::map<int, float> distances;
+                            std::map<std::pair<int, int>, float> distancesLocal;
+                            float s = 1;
+                            int m = has_depth_sensor ? (depthWidth - depthHeight) / 2 : 0;
+                            if (depthWidth > 240) s = depthWidth / 240.0f;
+                            for (float fy = 0; fy < depthHeight; fy += s) {
+                                for (float fx = m; fx < depthWidth - m; fx += s) {
+                                    int x = (int)fx;
+                                    int y = (int)fy;
+                                    if ((x < 4) && (y == 0))
+                                        continue;
 
-                                //check point validity
-                                double depth = (imgData[y * stride / 2 + x] & 0xFFFF) * 0.001f;
-                                if (hasConfidence) {
-                                    if (confidenceData[y * depthWidth + x] <= minConfidence) {
-                                        if (hasSecondary) {
+                                    //check point validity
+                                    double depth = (imgData[y * stride / 2 + x] & 0xFFFF) * 0.001f;
+                                    if (hasConfidence && confidenceData) {
+                                        if (confidenceData[y * depthWidth + x] <= minConfidence) {
+                                            if (hasSecondary && imgData2) {
 
-                                            //get nearest point with high confidence in 4 directions
-                                            bool left = false, right = false, up = false, down = false;
-                                            glm::vec3 c, l, r, u, d;
-                                            for (int tx = x; tx >= 0; tx--) {
-                                                if (confidenceData[y * depthWidth + tx] > minConfidence) {
-                                                    l = glm::vec3(tx, y, (imgData[y * stride / 2 + tx] & 0xFFFF) * 0.001f);
-                                                    left = true;
-                                                    break;
+                                                //get nearest point with high confidence in 4 directions
+                                                bool left = false, right = false, up = false, down = false;
+                                                glm::vec3 c, l, r, u, d;
+                                                for (int tx = x; tx >= 0; tx--) {
+                                                    if (confidenceData[y * depthWidth + tx] > minConfidence) {
+                                                        l = glm::vec3(tx, y, (imgData[y * stride / 2 + tx] & 0xFFFF) * 0.001f);
+                                                        left = true;
+                                                        break;
+                                                    }
                                                 }
-                                            }
-                                            for (int tx = x; tx < depthWidth; tx++) {
-                                                if (confidenceData[y * depthWidth + tx] > minConfidence) {
-                                                    r = glm::vec3(tx, y, (imgData[y * stride / 2 + tx] & 0xFFFF) * 0.001f);
-                                                    right = true;
-                                                    break;
+                                                for (int tx = x; tx < depthWidth; tx++) {
+                                                    if (confidenceData[y * depthWidth + tx] > minConfidence) {
+                                                        r = glm::vec3(tx, y, (imgData[y * stride / 2 + tx] & 0xFFFF) * 0.001f);
+                                                        right = true;
+                                                        break;
+                                                    }
                                                 }
-                                            }
-                                            for (int ty = y; ty >= 0; ty--) {
-                                                if (confidenceData[ty * depthWidth + x] > minConfidence) {
-                                                    u = glm::vec3(x, ty, (imgData[ty * stride / 2 + x] & 0xFFFF) * 0.001f);
-                                                    up = true;
-                                                    break;
+                                                for (int ty = y; ty >= 0; ty--) {
+                                                    if (confidenceData[ty * depthWidth + x] > minConfidence) {
+                                                        u = glm::vec3(x, ty, (imgData[ty * stride / 2 + x] & 0xFFFF) * 0.001f);
+                                                        up = true;
+                                                        break;
+                                                    }
                                                 }
-                                            }
-                                            for (int ty = y; ty < depthHeight; ty++) {
-                                                if (confidenceData[ty * depthWidth + x] > minConfidence) {
-                                                    d = glm::vec3(x, ty, (imgData[ty * stride / 2 + x] & 0xFFFF) * 0.001f);
-                                                    down = true;
-                                                    break;
+                                                for (int ty = y; ty < depthHeight; ty++) {
+                                                    if (confidenceData[ty * depthWidth + x] > minConfidence) {
+                                                        d = glm::vec3(x, ty, (imgData[ty * stride / 2 + x] & 0xFFFF) * 0.001f);
+                                                        down = true;
+                                                        break;
+                                                    }
                                                 }
-                                            }
-                                            c = glm::vec3(x, y, (imgData2[y * stride2 / 2 + x] & 0xFFFF) * 0.001f);
+                                                int x2 = (depthWidth2 == depthWidth) ? x : (x * depthWidth2 / depthWidth);
+                                                int y2 = (depthHeight2 == depthHeight) ? y : (y * depthHeight2 / depthHeight);
+                                                if (x2 < 0) x2 = 0; if (x2 >= depthWidth2) x2 = depthWidth2 - 1;
+                                                if (y2 < 0) y2 = 0; if (y2 >= depthHeight2) y2 = depthHeight2 - 1;
+                                                c = glm::vec3(x, y, (imgData2[y2 * stride2 / 2 + x2] & 0xFFFF) * 0.001f);
 
-                                            //"closed" holes filling
-                                            bool horizontal = false, vertical = false;
-                                            if (left && right) {
-                                                glm::vec3 v = glm::lerp(l, r, (c.x - l.x) / (r.x - l.x));
-                                                if (fabs(v.z - c.z) < maxErrorHoles) {
-                                                    horizontal = true;
+                                                //"closed" holes filling
+                                                bool horizontal = false, vertical = false;
+                                                if (left && right) {
+                                                    glm::vec3 v = glm::lerp(l, r, (c.x - l.x) / (r.x - l.x));
+                                                    if (fabs(v.z - c.z) < maxErrorHoles) {
+                                                        horizontal = true;
+                                                    }
                                                 }
-                                            }
-                                            if (up && down) {
-                                                glm::vec3 v = glm::lerp(u, d, (c.x - u.x) / (d.x - u.x));
-                                                if (fabs(v.z - c.z) < maxErrorHoles) {
-                                                    vertical = true;
+                                                if (up && down) {
+                                                    glm::vec3 v = glm::lerp(u, d, (c.x - u.x) / (d.x - u.x));
+                                                    if (fabs(v.z - c.z) < maxErrorHoles) {
+                                                        vertical = true;
+                                                    }
                                                 }
-                                            }
-                                            if (horizontal || vertical) {
-                                                depth = c.z;
+                                                if (horizontal || vertical) {
+                                                    depth = c.z;
+                                                } else {
+
+                                                    //store the refused point to process later
+                                                    depth = c.z;
+                                                    refused.emplace_back(ToPoint(screen2world, len, depthWidth, depthHeight, x, y, depth));
+
+                                                    //mark edge points for wall validation
+                                                    if (up && !down) edges2d[std::pair<int, int>(u.x, u.y)] = u.z;
+                                                    if (!up && down) edges2d[std::pair<int, int>(d.x, d.y)] = d.z;
+                                                    if (left && !right) edges2d[std::pair<int, int>(l.x, l.y)] = l.z;
+                                                    if (!left && right) edges2d[std::pair<int, int>(r.x, r.y)] = r.z;
+                                                    continue;
+                                                }
                                             } else {
-
-                                                //store the refused point to process later
-                                                depth = c.z;
-                                                refused.emplace_back(ToPoint(screen2world, len, depthWidth, depthHeight, x, y, depth));
-
-                                                //mark edge points for wall validation
-                                                if (up && !down) edges2d[std::pair<int, int>(u.x, u.y)] = u.z;
-                                                if (!up && down) edges2d[std::pair<int, int>(d.x, d.y)] = d.z;
-                                                if (left && !right) edges2d[std::pair<int, int>(l.x, l.y)] = l.z;
-                                                if (!left && right) edges2d[std::pair<int, int>(r.x, r.y)] = r.z;
                                                 continue;
                                             }
-                                        } else {
-                                            continue;
                                         }
                                     }
-                                }
 
-                                //filter depth noise
-                                if (hasSecondary) {
-                                    double filtered = (imgData2[y * stride2 / 2 + x] & 0xFFFF) * 0.001f;
-                                    if (fabs(depth - filtered) < maxErrorFilter) {
-                                        depth = filtered;
-                                    }
-                                }
-
-                                //add point into output
-                                if (depth > 0.15f && depth < 6.0f) {
-                                    depth -= offset;
-                                    glm::vec4 p = ToPoint(screen2world, len, depthWidth, depthHeight, x, y, depth);
-                                    if (maxY < p.y) maxY = p.y;
-                                    depth_points.emplace_back(p);
-
-                                    if (!has_depth_sensor) {
-                                        int dir = (int)glm::degrees(atan2(p.y - cam.y, p.x - cam.x));
-                                        float dst = glm::distance(cam, glm::vec3(p));
-                                        if (distances.find(dir) == distances.end()) {
-                                            distances[dir] = dst;
-                                        } else if (distances[dir] > dst) {
-                                            distances[dir] = dst;
-                                        }
-                                        std::pair<int, int> key;
-                                        key.first = dir;
-                                        key.second = (int)(p.y * 10);
-                                        if (distancesLocal.find(key) == distancesLocal.end()) {
-                                            distancesLocal[key] = dst;
-                                        } else if (distancesLocal[key] > dst) {
-                                            distancesLocal[key] = dst;
+                                    //filter depth noise
+                                    if (hasSecondary && imgData2) {
+                                        int x2 = (depthWidth2 == depthWidth) ? x : (x * depthWidth2 / depthWidth);
+                                        int y2 = (depthHeight2 == depthHeight) ? y : (y * depthHeight2 / depthHeight);
+                                        if (x2 >= 0 && x2 < depthWidth2 && y2 >= 0 && y2 < depthHeight2) {
+                                            double filtered = (imgData2[y2 * stride2 / 2 + x2] & 0xFFFF) * 0.001f;
+                                            if (fabs(depth - filtered) < maxErrorFilter) {
+                                                depth = filtered;
+                                            }
                                         }
                                     }
-                                }
-                            }
-                        }
 
+                                    //add point into output
+                                    if (depth > 0.05f) {
+                                        depth -= offset;
+                                        glm::vec4 p = ToPoint(screen2world, len, depthWidth, depthHeight, x, y, depth);
+                                        if (maxY < p.y) maxY = p.y;
+                                        depth_points.emplace_back(p);
 
-                        //convert edge points into 3D space
-                        std::vector<glm::vec3> edges3d;
-                        for (std::pair<const std::pair<int, int>, double>& e : edges2d) {
-                            int x = e.first.first;
-                            int y = e.first.second;
-                            double depth = e.second;
-                            edges3d.emplace_back(ToPoint(screen2world, len, depthWidth, depthHeight, x, y, depth));
-                        }
-
-                        //add wall points
-                        for (glm::vec3& r : refused) {
-                            bool ok = false;
-                            glm::vec3 v(INT_MIN);
-                            for (glm::vec3& p : edges3d) {
-                                if ((r.y > p.y) && (r.y < maxY)) {
-                                    float x = fabs(p.x - r.x);
-                                    float z = fabs(p.z - r.z);
-                                    if (x * x + z * z < maxErrorWalls * maxErrorWalls) {
-                                        if (v.y < p.y) {
-                                            ok = true;
-                                            v = p;
+                                        if (!has_depth_sensor) {
+                                            int dir = (int)glm::degrees(atan2(p.y - cam.y, p.x - cam.x));
+                                            float dst = glm::distance(cam, glm::vec3(p));
+                                            if (distances.find(dir) == distances.end()) {
+                                                distances[dir] = dst;
+                                            } else if (distances[dir] > dst) {
+                                                distances[dir] = dst;
+                                            }
+                                            std::pair<int, int> key;
+                                            key.first = dir;
+                                            key.second = (int)(p.y * 10);
+                                            if (distancesLocal.find(key) == distancesLocal.end()) {
+                                                distancesLocal[key] = dst;
+                                            } else if (distancesLocal[key] > dst) {
+                                                distancesLocal[key] = dst;
+                                            }
                                         }
                                     }
                                 }
                             }
-                            if (ok) {
-                                int dir = (int)glm::degrees(atan2(v.y - cam.y, v.x - cam.x));
-                                if (distances.find(dir) != distances.end()) {
-                                    float dst = glm::distance(cam, v);
-                                    if ((distances[dir] - maxErrorWalls < dst)) {
-                                        std::pair<int, int> key;
-                                        key.first = dir;
-                                        key.second = (int)(r.y * 10);
-                                        if (distancesLocal.find(key) == distancesLocal.end()) {
-                                            depth_points.emplace_back(r, 1.0f);
-                                        } else if (distancesLocal[key] + maxErrorWalls > dst) {
-                                            depth_points.emplace_back(r, 1.0f);
+
+
+                            //convert edge points into 3D space
+                            std::vector<glm::vec3> edges3d;
+                            for (std::pair<const std::pair<int, int>, double>& e : edges2d) {
+                                int x = e.first.first;
+                                int y = e.first.second;
+                                double depth = e.second;
+                                edges3d.emplace_back(ToPoint(screen2world, len, depthWidth, depthHeight, x, y, depth));
+                            }
+
+                            //add wall points
+                            for (glm::vec3& r : refused) {
+                                bool ok = false;
+                                glm::vec3 v(INT_MIN);
+                                for (glm::vec3& p : edges3d) {
+                                    if ((r.y > p.y) && (r.y < maxY)) {
+                                        float x = fabs(p.x - r.x);
+                                        float z = fabs(p.z - r.z);
+                                        if (x * x + z * z < maxErrorWalls * maxErrorWalls) {
+                                            if (v.y < p.y) {
+                                                ok = true;
+                                                v = p;
+                                            }
+                                        }
+                                    }
+                                }
+                                if (ok) {
+                                    int dir = (int)glm::degrees(atan2(v.y - cam.y, v.x - cam.x));
+                                    if (distances.find(dir) != distances.end()) {
+                                        float dst = glm::distance(cam, v);
+                                        if ((distances[dir] - maxErrorWalls < dst)) {
+                                            std::pair<int, int> key;
+                                            key.first = dir;
+                                            key.second = (int)(r.y * 10);
+                                            if (distancesLocal.find(key) == distancesLocal.end()) {
+                                                depth_points.emplace_back(r, 1.0f);
+                                            } else if (distancesLocal[key] + maxErrorWalls > dst) {
+                                                depth_points.emplace_back(r, 1.0f);
+                                            }
                                         }
                                     }
                                 }

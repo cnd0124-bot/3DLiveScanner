@@ -238,10 +238,7 @@ namespace oc {
 
             pair.second = new Tango3DR_Mesh();
             ret = Tango3DR_extractMeshSegment(context, t3dr_updated.indices[it], pair.second);
-            if (ret != TANGO_3DR_SUCCESS || pair.second->num_faces == 0 || pair.second->num_vertices == 0) {
-                if (ret == TANGO_3DR_SUCCESS) {
-                    Tango3DR_Mesh_destroy(pair.second);
-                }
+            if (ret != TANGO_3DR_SUCCESS) {
                 delete pair.second;
                 continue;
             }

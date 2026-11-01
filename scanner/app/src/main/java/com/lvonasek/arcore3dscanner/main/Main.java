@@ -411,6 +411,9 @@ public class Main extends AbstractActivity implements View.OnClickListener,
       } else {
         m3drRunning = !m3drRunning;
         JNI.onToggleButtonClicked(m3drRunning);
+        if (mToggleButton != null) {
+          mToggleButton.setImageResource(m3drRunning ? R.drawable.ic_pause : R.drawable.ic_record);
+        }
       }
       runOnUiThread(() -> mHandMotionView.setVisibility(View.GONE));
     } else if (id == R.id.clear_button) {
