@@ -487,7 +487,7 @@ class FileAdapter extends BaseAdapter
               case 2: //sketchfab
                 intent = new Intent(mContext, OAuth.class);
                 intent.putExtra(AbstractActivity.FILE_KEY, zip);
-                intent.startActivity(intent);
+                mContext.startActivity(intent);
                 break;
               case 3: //2D CAD(DXF) export
                 new Thread(() -> {
