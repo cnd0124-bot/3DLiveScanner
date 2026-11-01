@@ -145,10 +145,6 @@ namespace oc {
 
     std::vector<glm::vec4> ARCoreService::GetPointCloud(float maxDiff) {
         std::vector<glm::vec4> output;
-        bool validFrame = !GetActiveAnchors().empty() || IsFaceMode();
-        if (!validFrame && HasCoordinateSystem())
-            return output;
-
         if (GetPoseDiff() >= maxDiff)
             return output;
 

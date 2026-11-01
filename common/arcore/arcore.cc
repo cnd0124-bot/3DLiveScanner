@@ -25,8 +25,8 @@ namespace oc {
 
             ArConfig *ar_config = nullptr;
             ArConfig_create(ar_session_, &ar_config);
-            ArConfig_setFocusMode(ar_session_, ar_config, AR_FOCUS_MODE_FIXED);
-            ArConfig_setPlaneFindingMode(ar_session_, ar_config, AR_PLANE_FINDING_MODE_DISABLED);
+            ArConfig_setFocusMode(ar_session_, ar_config, AR_FOCUS_MODE_AUTO);
+            ArConfig_setPlaneFindingMode(ar_session_, ar_config, AR_PLANE_FINDING_MODE_HORIZONTAL_AND_VERTICAL);
             if (faceMode) {
                 ArConfig_setAugmentedFaceMode(ar_session_, ar_config, AR_AUGMENTED_FACE_MODE_MESH3D);
                 useDepth = false;
@@ -189,13 +189,10 @@ namespace oc {
         view_mat = view_mat * GetZeroTransform();
         ArCamera_release(ar_camera);
 
-        if (face_mode_) {
-            return true;
-        } else if (ar_anchor_list.empty()) {
-            return UpdateAnchor();
-        } else {
-            return true;
+        if (!face_mode_) {
+            UpdateAnchor();
         }
+        return true;
     }
 
     void ARCore::RenderCamera(ARCoreCamera::Effect effect, int scale) {
@@ -593,10 +590,7 @@ namespace oc {
     }
 
     void ARCore::UpdateFeaturePoints() {
-        if (!UpdateAnchor()) {
-            points.clear();
-            return;
-        }
+        UpdateAnchor();
 
         std::vector<glm::vec4> feature_points;
         ArPointCloud *ar_point_cloud = nullptr;
@@ -616,7 +610,7 @@ namespace oc {
         }
 
         std::vector<glm::vec4> depth_points;
-        if (useDepth && number_of_points > 0) {
+        if (useDepth) {
             camera.InitARCore(ar_session_, ar_frame_);
 
             ArImage* image = 0;
