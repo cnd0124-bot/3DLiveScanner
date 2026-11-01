@@ -853,7 +853,6 @@ namespace oc {
                     lastDepthTimestamp = timestamp;
                 }
             }
-        }
 
         if (!depth_points.empty()) {
             points = depth_points;
