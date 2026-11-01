@@ -308,7 +308,7 @@ namespace oc {
         glStencilFunc(GL_ALWAYS, 1, 0xFF);
         glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
         reconstruction.scene.BindMixedShader();
-        bool output = OnDrawScan(pos, zoomable);
+        bool output = OnDrawScan(reconstruction.scene.renderer->camera.position, zoomable);
         glDisable(GL_BLEND);
 
         //camera preview
@@ -327,6 +327,7 @@ namespace oc {
             glViewport(0, 0, w, h);
             glEnable(GL_DEPTH_TEST);
         }
+        glDisable(GL_STENCIL_TEST);
         reconstruction.render_mutex_.unlock();
 
         int error = glGetError();
@@ -339,31 +340,21 @@ namespace oc {
     bool App::OnDrawScan(glm::vec3 pos, bool zoomable) {
         bool output = !reconstruction.scene.static_meshes_.empty();
         float step = reconstruction.scan.Resolution() * 16.0f;
-        float limit = 2 * glm::min(reconstruction.scan.Resolution(), 0.03f) * 100.0f;
-        if (reconstruction.scan.Resolution() > 0.05f) {
-            limit = 10000;
-        }
-        GLSL::CurrentShader()->UniformFloat("u_uniformBegin", limit - step - step);
+        float limit = 10000.0f;
+        GLSL::CurrentShader()->UniformFloat("u_uniformBegin", limit);
         GLSL::CurrentShader()->UniformFloat("u_uniformFactor", 1.0f / step);
         GLSL::CurrentShader()->UniformVec3("u_uniformCamera", pos.x, pos.y, pos.z);
+        glDisable(GL_CULL_FACE);
         for (std::pair<GridIndex, Tango3DR_Mesh*> s : reconstruction.scan.Data()) {
-            bool ok = true;
-            for (int i = 0; i < 3; i++) {
-                if (abs(pos[i] - s.first.indices[i] * step) > limit) {
-                    ok = false;
-                    break;
-                }
-            }
             if (s.second && s.second->num_faces > 0 && s.second->num_vertices > 0 &&
                 s.second->vertices && s.second->normals && s.second->colors && s.second->faces) {
-                if (ok) {
-                    reconstruction.scene.renderer->Render(&s.second->vertices[0][0], &s.second->normals[0][0], 0,
-                                                          (unsigned int*)&s.second->colors[0][0],
-                                                          s.second->num_faces * 3, &s.second->faces[0][0]);
-                    output = true;
-                }
+                reconstruction.scene.renderer->Render(&s.second->vertices[0][0], &s.second->normals[0][0], 0,
+                                                      (unsigned int*)&s.second->colors[0][0],
+                                                      s.second->num_faces * 3, &s.second->faces[0][0]);
+                output = true;
             }
         }
+        glEnable(GL_CULL_FACE);
         return output;
     }
 

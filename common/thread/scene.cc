@@ -353,6 +353,10 @@ namespace oc {
                "  f_color.g += abs(0.5 * v_normal.y + 0.5) * u_uniformNormals;\n"
                "  f_color.b += abs(0.5 * v_normal.z + 0.5) * u_uniformNormals;\n"
                "  f_color.a *= min(max(1.0 - (dst - u_uniformBegin) * u_uniformFactor, 0.0), 1.0);\n"
+               "  if (f_color.a < 0.1) f_color.a = 1.0;\n"
+               "  if (length(f_color.rgb) < 0.05) {\n"
+               "    f_color.rgb = abs(v_normal) * 0.4 + vec3(0.5, 0.55, 0.6);\n"
+               "  }\n"
                "}";
     }
 
@@ -392,7 +396,7 @@ namespace oc {
                "      gl_FragColor = f_color;\n"
                "  } else\n"
                "    gl_FragColor = f_color;\n"
-               "  gl_FragColor.a = f_color.a;\n"
+               "  gl_FragColor.a = max(f_color.a, 0.9);\n"
                "}";
     }
 
@@ -414,6 +418,10 @@ namespace oc {
                "  float dst = max(max(diff.x, diff.y), diff.z);\n"
                "  f_color = v_color * (1.0 - u_uniformNormals);\n"
                "  f_color.a *= min(max(1.0 - (dst - u_uniformBegin) * u_uniformFactor, 0.0), 1.0);\n"
+               "  if (f_color.a < 0.1) f_color.a = 1.0;\n"
+               "  if (length(f_color.rgb) < 0.05) {\n"
+               "    f_color.rgb = abs(v_normal) * 0.4 + vec3(0.5, 0.55, 0.6);\n"
+               "  }\n"
                "  f_uv = u_projectMatrix * v_vertex;\n"
                "  f_uv.xy /= abs(f_uv.w);\n"
                "}";

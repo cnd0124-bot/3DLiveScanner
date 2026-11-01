@@ -497,7 +497,6 @@ class FileAdapter extends BaseAdapter
                   File targetDxf = new File(getPath(), baseName + Exporter.EXT_DXF);
                   boolean ok = Exporter.convertObjToDxf(file, targetDxf);
                   mContext.runOnUiThread(() -> {
-                    mContext.showProgress();
                     if (ok) {
                       Toast.makeText(mContext, String.format(mContext.getString(R.string.dxf_saved), targetDxf.getName()), Toast.LENGTH_LONG).show();
                     } else {

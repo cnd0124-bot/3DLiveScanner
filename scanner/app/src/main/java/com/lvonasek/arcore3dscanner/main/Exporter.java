@@ -128,28 +128,75 @@ public class Exporter
       float minY = Float.MAX_VALUE;
       float maxY = -Float.MAX_VALUE;
 
-      java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.FileReader(actualObj));
-      String line;
-      while ((line = reader.readLine()) != null) {
-        if (line.startsWith("v ")) {
-          String[] parts = line.trim().split("\\s+");
-          if (parts.length >= 4) {
-            float x = Float.parseFloat(parts[1]);
-            float y = Float.parseFloat(parts[2]);
-            float z = Float.parseFloat(parts[3]);
-            vertices.add(new float[]{x, y, z});
-            if (y < minY) minY = y;
-            if (y > maxY) maxY = y;
+      if (actualObj.isDirectory()) {
+        File[] pclFiles = actualObj.listFiles((dir, name) -> name.endsWith(".pcl"));
+        if (pclFiles != null && pclFiles.length > 0) {
+          for (File pcl : pclFiles) {
+            try (java.io.DataInputStream dis = new java.io.DataInputStream(new java.io.BufferedInputStream(new java.io.FileInputStream(pcl)))) {
+              byte[] intBuf = new byte[4];
+              if (dis.read(intBuf) == 4) {
+                int numPoints = (intBuf[0] & 0xFF) | ((intBuf[1] & 0xFF) << 8) | ((intBuf[2] & 0xFF) << 16) | ((intBuf[3] & 0xFF) << 24);
+                byte[] ptBuf = new byte[16];
+                for (int p = 0; p < numPoints; p++) {
+                  if (dis.read(ptBuf) != 16) break;
+                  int ix = (ptBuf[0] & 0xFF) | ((ptBuf[1] & 0xFF) << 8) | ((ptBuf[2] & 0xFF) << 16) | ((ptBuf[3] & 0xFF) << 24);
+                  int iy = (ptBuf[4] & 0xFF) | ((ptBuf[5] & 0xFF) << 8) | ((ptBuf[6] & 0xFF) << 16) | ((ptBuf[7] & 0xFF) << 24);
+                  int iz = (ptBuf[8] & 0xFF) | ((ptBuf[9] & 0xFF) << 8) | ((ptBuf[10] & 0xFF) << 16) | ((ptBuf[11] & 0xFF) << 24);
+                  float x = Float.intBitsToFloat(ix);
+                  float y = Float.intBitsToFloat(iy);
+                  float z = Float.intBitsToFloat(iz);
+                  if (!Float.isNaN(x) && !Float.isNaN(y) && !Float.isNaN(z)) {
+                    vertices.add(new float[]{x, y, z});
+                    if (y < minY) minY = y;
+                    if (y > maxY) maxY = y;
+                  }
+                }
+              }
+            } catch (Exception ignored) {}
           }
         }
+      } else {
+        boolean isPly = actualObj.getName().toLowerCase().endsWith(".ply");
+        boolean inPlyBody = !isPly;
+        java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.FileReader(actualObj));
+        String line;
+        while ((line = reader.readLine()) != null) {
+          if (isPly) {
+            if (!inPlyBody) {
+              if (line.trim().equals("end_header")) inPlyBody = true;
+              continue;
+            }
+            String[] parts = line.trim().split("\\s+");
+            if (parts.length >= 3) {
+              try {
+                float x = Float.parseFloat(parts[0]);
+                float y = Float.parseFloat(parts[1]);
+                float z = Float.parseFloat(parts[2]);
+                vertices.add(new float[]{x, y, z});
+                if (y < minY) minY = y;
+                if (y > maxY) maxY = y;
+              } catch (Exception ignored) {}
+            }
+          } else if (line.startsWith("v ")) {
+            String[] parts = line.trim().split("\\s+");
+            if (parts.length >= 4) {
+              float x = Float.parseFloat(parts[1]);
+              float y = Float.parseFloat(parts[2]);
+              float z = Float.parseFloat(parts[3]);
+              vertices.add(new float[]{x, y, z});
+              if (y < minY) minY = y;
+              if (y > maxY) maxY = y;
+            }
+          }
+        }
+        reader.close();
       }
-      reader.close();
 
       if (vertices.isEmpty()) return false;
 
       // Cross section slice: wall height (typically between 15% and 85% of total height)
-      float sliceMinY = minY + (maxY - minY) * 0.15f;
-      float sliceMaxY = minY + (maxY - minY) * 0.85f;
+      float sliceMinY = (maxY - minY > 0.3f) ? minY + (maxY - minY) * 0.15f : minY - 100.0f;
+      float sliceMaxY = (maxY - minY > 0.3f) ? minY + (maxY - minY) * 0.85f : maxY + 100.0f;
 
       // 2cm grid resolution (scale = 50 cells per meter)
       float gridScale = 50.0f;
@@ -159,6 +206,19 @@ public class Exporter
 
       for (float[] v : vertices) {
         if (v[1] >= sliceMinY && v[1] <= sliceMaxY) {
+          int gx = Math.round(v[0] * gridScale);
+          int gz = Math.round(v[2] * gridScale);
+          long key = (((long) gx) << 32) | (gz & 0xFFFFFFFFL);
+          grid.add(key);
+          if (gx < minGx) minGx = gx;
+          if (gx > maxGx) maxGx = gx;
+          if (gz < minGz) minGz = gz;
+          if (gz > maxGz) maxGz = gz;
+        }
+      }
+
+      if (grid.isEmpty()) {
+        for (float[] v : vertices) {
           int gx = Math.round(v[0] * gridScale);
           int gz = Math.round(v[2] * gridScale);
           long key = (((long) gx) << 32) | (gz & 0xFFFFFFFFL);

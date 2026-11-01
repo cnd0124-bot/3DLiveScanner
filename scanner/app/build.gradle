@@ -11,6 +11,8 @@ android {
         namespace ="com.lvonasek.arcore3dscanner"
         minSdkVersion 24
         targetSdkVersion 33
+        versionCode 220030
+        versionName "2.0-korean-flip7"
         manifestPlaceholders = ['appAuthRedirectScheme': 'https://lvonasek.github.io/redirect.html']
         multiDexEnabled true
         ndk {
