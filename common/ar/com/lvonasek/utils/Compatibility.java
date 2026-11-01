@@ -109,10 +109,6 @@ public class Compatibility {
     public static boolean isGoogleDepthSupported(Activity activity) {
         Session session = null;
         try {
-            if (!isPlayStoreSupported(activity)) {
-                return false;
-            }
-
             session = new Session(activity);
             return session.isDepthModeSupported(Config.DepthMode.RAW_DEPTH_ONLY) ||
                    session.isDepthModeSupported(Config.DepthMode.AUTOMATIC);
@@ -131,10 +127,6 @@ public class Compatibility {
     public static boolean isGoogleToFSupported(Activity activity) {
         Session session = null;
         try {
-            if (!isPlayStoreSupported(activity)) {
-                return false;
-            }
-
             session = new Session(activity);
             for (CameraConfig config : session.getSupportedCameraConfigs()) {
                 if (config.getDepthSensorUsage() == CameraConfig.DepthSensorUsage.REQUIRE_AND_USE) {
@@ -181,15 +173,26 @@ public class Compatibility {
 
     public static boolean isPlayStoreSupported(Context context)
     {
-        Intent mainIntent = new Intent(Intent.ACTION_MAIN, null);
-        mainIntent.addCategory(Intent.CATEGORY_LAUNCHER);
-        for (ResolveInfo info : context.getPackageManager().queryIntentActivities( mainIntent, 0))
-            if (info.activityInfo.packageName.compareTo("com.android.vending") == 0)
-                return true;
-        return false;
+        try {
+            context.getPackageManager().getPackageInfo("com.android.vending", 0);
+            return true;
+        } catch (Exception ignored) {
+            Intent mainIntent = new Intent(Intent.ACTION_MAIN, null);
+            mainIntent.addCategory(Intent.CATEGORY_LAUNCHER);
+            for (ResolveInfo info : context.getPackageManager().queryIntentActivities(mainIntent, 0)) {
+                if (info.activityInfo != null && "com.android.vending".equals(info.activityInfo.packageName)) {
+                    return true;
+                }
+            }
+            return false;
+        }
     }
 
     public static boolean shouldUseHuawei(Activity activity) {
+        String manufacturer = Build.MANUFACTURER;
+        if (manufacturer == null || (!manufacturer.equalsIgnoreCase("huawei") && !manufacturer.equalsIgnoreCase("honor"))) {
+            return false;
+        }
         return isHuaweiToFSupported(activity) || !isPlayStoreSupported(activity);
     }
 }

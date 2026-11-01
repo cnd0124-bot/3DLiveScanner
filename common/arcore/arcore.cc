@@ -618,9 +618,12 @@ namespace oc {
             const float *point_cloud_data;
             ArPointCloud_getData(ar_session_, ar_point_cloud, &point_cloud_data);
 
+            glm::mat4 zero = glm::inverse(GetZeroTransform());
             for (int i = 0; i < number_of_points * 4; i += 4) {
-                feature_points.push_back(glm::vec4(point_cloud_data[i + 0], point_cloud_data[i + 1],
-                                           point_cloud_data[i + 2], point_cloud_data[i + 3]));
+                glm::vec4 raw_pt(point_cloud_data[i + 0], point_cloud_data[i + 1], point_cloud_data[i + 2], 1.0f);
+                glm::vec4 trans_pt = zero * raw_pt;
+                float conf = point_cloud_data[i + 3];
+                feature_points.push_back(glm::vec4(trans_pt.x, trans_pt.y, trans_pt.z, conf));
             }
             ArPointCloud_release(ar_point_cloud);
         }
@@ -630,9 +633,14 @@ namespace oc {
             camera.InitARCore(ar_session_, ar_frame_);
 
             ArImage* image = nullptr;
-            int result = -1;
-            if (useDepthRaw) {
+            int result = ArFrame_acquireRawDepthImage16Bits(ar_session_, ar_frame_, &image);
+            bool isRaw = (result == AR_SUCCESS && image != nullptr);
+            if (!isRaw) {
+                result = ArFrame_acquireDepthImage16Bits(ar_session_, ar_frame_, &image);
+            }
+            if (result != AR_SUCCESS || image == nullptr) {
                 result = ArFrame_acquireRawDepthImage(ar_session_, ar_frame_, &image);
+                isRaw = (result == AR_SUCCESS && image != nullptr);
             }
             if (result != AR_SUCCESS || image == nullptr) {
                 result = ArFrame_acquireDepthImage(ar_session_, ar_frame_, &image);
@@ -641,11 +649,13 @@ namespace oc {
                 uint8_t* confidenceData = nullptr;
                 ArImage* confidenceImage = nullptr;
                 bool hasConfidence = false;
-                if (useDepthRaw) {
+                int32_t confStride = 0;
+                if (isRaw) {
                     if (ArFrame_acquireRawDepthConfidenceImage(ar_session_, ar_frame_, &confidenceImage) == AR_SUCCESS && confidenceImage) {
                         int32_t confLen = 0;
+                        ArImage_getPlaneRowStride(ar_session_, confidenceImage, 0, &confStride);
                         ArImage_getPlaneData(ar_session_, confidenceImage, 0, (const uint8_t**)&confidenceData, &confLen);
-                        if (confidenceData != nullptr) {
+                        if (confidenceData != nullptr && confStride > 0) {
                             hasConfidence = true;
                         } else {
                             ArImage_release(confidenceImage);
@@ -676,8 +686,8 @@ namespace oc {
                             int y = (int)fy;
                             if (x < 0 || x >= depthWidth || y < 0 || y >= depthHeight) continue;
 
-                            if (hasConfidence && confidenceData) {
-                                if (confidenceData[y * depthWidth + x] == 0) {
+                            if (hasConfidence && confidenceData && confStride > 0) {
+                                if (confidenceData[y * confStride + x] == 0) {
                                     continue;
                                 }
                             }
@@ -705,7 +715,9 @@ namespace oc {
         if (!depth_points.empty()) {
             points = depth_points;
             for (auto& fp : feature_points) {
-                points.push_back(fp);
+                if (fp.w > 0.3f) {
+                    points.push_back(fp);
+                }
             }
         } else {
             points = feature_points;

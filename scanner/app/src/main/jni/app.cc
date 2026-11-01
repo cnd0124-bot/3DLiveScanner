@@ -349,6 +349,7 @@ namespace oc {
         GLSL::CurrentShader()->UniformFloat("u_uniformBegin", limit);
         GLSL::CurrentShader()->UniformFloat("u_uniformFactor", 1.0f / step);
         GLSL::CurrentShader()->UniformVec3("u_uniformCamera", pos.x, pos.y, pos.z);
+        GLSL::CurrentShader()->UniformFloat("u_uniformNormals", reconstruction.scene.showNormals ? 1.0f : 0.0f);
         glDisable(GL_CULL_FACE);
         for (std::pair<GridIndex, Tango3DR_Mesh*> s : reconstruction.scan.Data()) {
             if (s.second && s.second->num_faces > 0 && s.second->num_vertices > 0 &&

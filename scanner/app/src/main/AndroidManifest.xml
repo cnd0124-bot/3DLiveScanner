@@ -16,7 +16,14 @@
     <uses-feature android:name="com.google.ar.core.depth" android:required="false" />
 
     <queries>
+        <package android:name="com.google.ar.core" />
+        <package android:name="com.android.vending" />
         <package android:name="com.huawei.arengine.service" />
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.BROWSABLE" />
+            <data android:scheme="https" />
+        </intent>
     </queries>
 
     <application
