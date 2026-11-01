@@ -155,13 +155,24 @@ namespace oc {
         ArCamera_getViewMatrix(ar_session_, ar_camera, glm::value_ptr(view_mat));
         ArCamera_getProjectionMatrix(ar_session_, ar_camera, 0.001f, 100.f,
                                        glm::value_ptr(projection_mat));
+
+        if (!face_mode_) {
+            ArTrackingState state = AR_TRACKING_STATE_STOPPED;
+            ArCamera_getTrackingState(ar_session_, ar_camera, &state);
+            if (state != AR_TRACKING_STATE_TRACKING) {
+                ArCamera_release(ar_camera);
+                return false;
+            }
+        }
+
         view_mat = view_mat * GetZeroTransform();
         ArCamera_release(ar_camera);
 
         if (face_mode_) {
             return true;
         } else if (ar_anchor_list.empty()) {
-            return UpdateAnchor();
+            UpdateAnchor();
+            return true;
         } else {
             return true;
         }
@@ -235,12 +246,9 @@ namespace oc {
         ArFrame_hitTest(ar_session_, ar_frame_, x, y, hits);
         ArHitResultList_getSize(ar_session_, hits, &size);
         if (size > 0) {
-            ArTrackable* trackable = 0;
             ArHitResultList_getItem(ar_session_, hits, 0, hit);
-            ArHitResult_acquireTrackable(ar_session_, hit, &trackable);
-            ArPoint_getPose(ar_session_, ArAsPoint(trackable), ar_pose);
+            ArHitResult_getHitPose(ar_session_, hit, ar_pose);
             ArPose_getPoseRaw(ar_session_, ar_pose, data);
-            ArTrackable_release(trackable);
             ArHitResultList_destroy(hits);
             ArHitResult_destroy(hit);
             ArPose_destroy(ar_pose);
@@ -342,15 +350,19 @@ namespace oc {
     glm::mat4 ARCore::GetZeroTransform() {
 #ifndef ARCORE_BACKPORT
         if (ar_zero_.second) {
-            float data[7] = {0, 0, 0, 1, 0, 0, 0};
+            ArTrackingState state = AR_TRACKING_STATE_STOPPED;
+            ArAnchor_getTrackingState(ar_session_, ar_zero_.second, &state);
+            if (state == AR_TRACKING_STATE_TRACKING) {
+                float data[7] = {0, 0, 0, 1, 0, 0, 0};
 
-            ArPose *ar_pose;
-            ArPose_create(ar_session_, data, &ar_pose);
-            ArAnchor_getPose(ar_session_, ar_zero_.second, ar_pose);
-            glm::mat4 matrix = GetMatrix(ar_pose);
-            ArPose_destroy(ar_pose);
+                ArPose *ar_pose;
+                ArPose_create(ar_session_, data, &ar_pose);
+                ArAnchor_getPose(ar_session_, ar_zero_.second, ar_pose);
+                glm::mat4 matrix = GetMatrix(ar_pose);
+                ArPose_destroy(ar_pose);
 
-            return matrix * glm::inverse(ar_zero_.first.matrix);
+                return matrix * glm::inverse(ar_zero_.first.matrix);
+            }
         }
 #endif
         return glm::mat4(1);
@@ -400,9 +412,9 @@ namespace oc {
                     ArHitResult_acquireTrackable(ar_session_, hit, &trackable);
                     ArTrackableType type = AR_TRACKABLE_NOT_VALID;
                     ArTrackable_getType(ar_session_, trackable, &type);
-                    if (type == AR_TRACKABLE_POINT) {
+                    if (type == AR_TRACKABLE_POINT || type == AR_TRACKABLE_PLANE) {
 
-                        ArPoint_getPose(ar_session_, ArAsPoint(trackable), ar_pose);
+                        ArHitResult_getHitPose(ar_session_, hit, ar_pose);
                         ArPose_getPoseRaw(ar_session_, ar_pose, data);
                         glm::vec3 position(data[4], data[5], data[6]);
 

@@ -132,7 +132,7 @@ public abstract class AbstractActivity extends Activity {
 
   public static boolean isCameraFeedOn(Context context) {
     SharedPreferences pref = PreferenceManager.getDefaultSharedPreferences(context);
-    return pref.getBoolean(context.getString(com.lvonasek.arcore3dscanner.R.string.pref_camera), false);
+    return pref.getBoolean(context.getString(com.lvonasek.arcore3dscanner.R.string.pref_camera), true);
   }
 
   public static boolean isFaceModeOn(Context context)

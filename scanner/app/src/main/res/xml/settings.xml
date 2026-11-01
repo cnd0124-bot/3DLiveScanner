@@ -145,7 +145,7 @@
                             android:title="@string/anchor" />
 
                         <CheckBoxPreference
-                            android:defaultValue="false"
+                            android:defaultValue="true"
                             android:key="@string/pref_camera"
                             android:summary="@string/camera_summary"
                             android:title="@string/camera" />

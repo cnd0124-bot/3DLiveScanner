@@ -76,7 +76,7 @@ public class Main extends AbstractActivity implements View.OnClickListener,
   private Button mEditorButton;
   private Button mThumbnailButton;
   private float mRes = 0.02f;
-  private int mViewCamera = 0;
+  private int mViewCamera = 1;
 
   private RelativeLayout mLayoutEditor;
   private ArrayList<Button> mEditorAction;
@@ -335,6 +335,8 @@ public class Main extends AbstractActivity implements View.OnClickListener,
     // OpenGL view where all of the graphics are drawn
     if (!isCameraFeedOn(this)) {
       mViewCamera = 3;
+    } else {
+      mViewCamera = 1;
     }
     mGLView = findViewById(R.id.gl_surface_view);
     mGLView.setRenderer(this);
@@ -627,16 +629,12 @@ public class Main extends AbstractActivity implements View.OnClickListener,
           }).start();
         } else if (!mCameraControl.isViewMode()) {
             if (isCameraFeedOn(this)) {
-              if (mViewCamera == 0) {
-                if (mLastClickY < mGLView.getHeight() / 6) {
-                  if (mLastClickX < mGLView.getWidth() / 6) {
-                    mViewCamera = 1;
-                  } else if (mLastClickX > 5 * mGLView.getWidth() / 6) {
-                    mViewCamera = 2;
-                  }
+              if (mLastClickY < mGLView.getHeight() / 6) {
+                if (mLastClickX > 5 * mGLView.getWidth() / 6) {
+                  mViewCamera = (mViewCamera == 1) ? 2 : 1;
+                } else if (mLastClickX < mGLView.getWidth() / 6) {
+                  mViewCamera = (mViewCamera == 1) ? 0 : 1;
                 }
-              } else {
-                mViewCamera = 0;
               }
             }
         }

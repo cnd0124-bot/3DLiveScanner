@@ -125,7 +125,7 @@ namespace oc {
             }
 
             if (ar->Process()) {
-                if (ar->GetPoseDiff() < 25) {
+                if (ar->GetPoseDiff() < 60.0f) {
                     reconstruction.lost = false;
                     reconstruction.tracked = true;
                 }
@@ -138,7 +138,7 @@ namespace oc {
                     reconstruction.scene.UpdateFrustum(ar->GetView());
                 pos = reconstruction.scene.renderer->camera.position;
 
-                float maxDiff = 25;
+                float maxDiff = 60.0f;
                 if (reconstruction.binder_mutex_.try_lock()) {
                     glm::mat4 lastMatrix = reconstruction.frame_calibration * reconstruction.frame_viewmat;
                     Image* lastFrame = 0;
@@ -321,7 +321,7 @@ namespace oc {
                 ar->RenderCamera(ARCoreCamera::NONE);
             }
             glStencilFunc(GL_NOTEQUAL, 1, 0xFF);
-            ar->RenderCamera(viewmode == 1 ? ARCoreCamera::GRAYSCALE : ARCoreCamera::DEPTH_INV);
+            ar->RenderCamera(viewmode == 1 ? ARCoreCamera::NONE : ARCoreCamera::DEPTH_INV);
         }
         if (ar && (viewmode == 0)) {
             glDisable(GL_DEPTH_TEST);
@@ -340,7 +340,7 @@ namespace oc {
         if (error > 0) {
             LOGI("GLERROR %d", error);
         }
-        return output;
+        return output || reconstruction.tracked;
     }
 
     bool App::OnDrawScan(glm::vec3 pos, bool zoomable) {
