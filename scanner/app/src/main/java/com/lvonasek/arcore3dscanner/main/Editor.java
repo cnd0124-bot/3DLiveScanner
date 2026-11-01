@@ -68,7 +68,7 @@ public class Editor extends View implements Button.OnClickListener, View.OnTouch
     mRect = new Rect();
     mCircleCenter = new Point();
     mCircleRadius = 0;
-    mShowNormals = false;
+    mShowNormals = true;
   }
 
   public void init(ArrayList<Button> buttons, TextView msg, SeekBar seek, ProgressBar progress, CheckBox deselect, AbstractActivity context)

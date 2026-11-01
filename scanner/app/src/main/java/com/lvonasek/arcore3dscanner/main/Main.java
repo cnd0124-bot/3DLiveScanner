@@ -309,6 +309,8 @@ public class Main extends AbstractActivity implements View.OnClickListener,
       JNI.setPhotoMode(isChecked);
     });
     CheckBox showNormals = findViewById(R.id.show_normals);
+    showNormals.setChecked(true);
+    JNI.showNormals(true);
     showNormals.setOnCheckedChangeListener((buttonView, isChecked) -> mEditor.swapNormals());
 
     // Buttons and record info

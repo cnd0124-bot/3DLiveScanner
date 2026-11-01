@@ -313,8 +313,13 @@ namespace oc {
 
         //camera preview
         if (ar && ((viewmode == 1) || (viewmode == 2))) {
+            if (!reconstruction.scene.showNormals) {
+                glStencilFunc(GL_EQUAL, 1, 0xFF);
+                glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
+                ar->RenderCamera(ARCoreCamera::NONE);
+            }
             glStencilFunc(GL_NOTEQUAL, 1, 0xFF);
-            ar->RenderCamera(viewmode == 1 ? ARCoreCamera::NONE : ARCoreCamera::DEPTH_INV);
+            ar->RenderCamera(viewmode == 1 ? ARCoreCamera::GRAYSCALE : ARCoreCamera::DEPTH_INV);
         }
         if (ar && (viewmode == 0)) {
             glDisable(GL_DEPTH_TEST);

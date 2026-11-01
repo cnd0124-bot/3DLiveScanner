@@ -4,7 +4,7 @@
 namespace oc {
 
     Scene::Scene() : color_vertex_shader(0),
-                     showNormals(false),
+                     showNormals(true),
                      projectTexture(-1),
                      lastGrid(0),
                      textured_shader(0),
