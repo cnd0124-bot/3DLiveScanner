@@ -129,10 +129,8 @@ namespace oc {
             }
 
             if (ar->Process()) {
-                if (ar->GetPoseDiff() < 60.0f) {
-                    reconstruction.lost = false;
-                    reconstruction.tracked = true;
-                }
+                reconstruction.lost = false;
+                reconstruction.tracked = true;
                 glm::mat4 pose = ar->GetPose()[OPENGL_CAMERA];
                 reconstruction.scene.renderer->camera.SetTransformation(pose);
                 if (anchors) {
@@ -315,11 +313,6 @@ namespace oc {
 
         //camera preview
         if (ar && ((viewmode == 1) || (viewmode == 2))) {
-            if (!reconstruction.scene.showNormals) {
-                glStencilFunc(GL_EQUAL, 1, 0xFF);
-                glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
-                ar->RenderCamera(ARCoreCamera::NONE);
-            }
             glStencilFunc(GL_NOTEQUAL, 1, 0xFF);
             ar->RenderCamera(viewmode == 1 ? ARCoreCamera::NONE : ARCoreCamera::DEPTH_INV);
         }
@@ -363,7 +356,7 @@ namespace oc {
             }
             if (s.second && s.second->num_faces > 0 && s.second->num_vertices > 0 &&
                 s.second->vertices && s.second->normals && s.second->colors && s.second->faces) {
-                if (ok && (!reconstruction.lost || zoomable)) {
+                if (ok) {
                     reconstruction.scene.renderer->Render(&s.second->vertices[0][0], &s.second->normals[0][0], 0,
                                                           (unsigned int*)&s.second->colors[0][0],
                                                           s.second->num_faces * 3, &s.second->faces[0][0]);

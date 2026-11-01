@@ -25,8 +25,8 @@ namespace oc {
 
             ArConfig *ar_config = nullptr;
             ArConfig_create(ar_session_, &ar_config);
-            ArConfig_setFocusMode(ar_session_, ar_config, AR_FOCUS_MODE_AUTO);
-            ArConfig_setPlaneFindingMode(ar_session_, ar_config, AR_PLANE_FINDING_MODE_HORIZONTAL_AND_VERTICAL);
+            ArConfig_setFocusMode(ar_session_, ar_config, AR_FOCUS_MODE_FIXED);
+            ArConfig_setPlaneFindingMode(ar_session_, ar_config, AR_PLANE_FINDING_MODE_DISABLED);
             if (faceMode) {
                 ArConfig_setAugmentedFaceMode(ar_session_, ar_config, AR_AUGMENTED_FACE_MODE_MESH3D);
                 useDepth = false;
@@ -183,7 +183,7 @@ namespace oc {
         if (!face_mode_) {
             ArTrackingState state = AR_TRACKING_STATE_STOPPED;
             ArCamera_getTrackingState(ar_session_, ar_camera, &state);
-            if (state != AR_TRACKING_STATE_TRACKING) {
+            if (state == AR_TRACKING_STATE_STOPPED) {
                 ArCamera_release(ar_camera);
                 return false;
             }

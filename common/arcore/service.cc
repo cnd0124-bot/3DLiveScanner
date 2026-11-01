@@ -89,7 +89,7 @@ namespace oc {
 
             float value = oc::GLCamera::Diff(pos, image_position, rot, image_rotation);
             if (last_diff >= 0) {
-                last_diff = value > last_diff ? value : 0.95f * last_diff + 0.05f * value;
+                last_diff = value > last_diff ? value : 0.8f * last_diff + 0.2f * value;
             } else {
                 last_diff = value;
             }
