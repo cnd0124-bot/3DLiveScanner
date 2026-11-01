@@ -140,7 +140,7 @@ namespace oc {
                     reconstruction.scene.UpdateFrustum(ar->GetView());
                 pos = reconstruction.scene.renderer->camera.position;
 
-                float maxDiff = 60.0f;
+                float maxDiff = 120.0f;
                 if (reconstruction.binder_mutex_.try_lock()) {
                     glm::mat4 lastMatrix = reconstruction.frame_calibration * reconstruction.frame_viewmat;
                     Image* lastFrame = 0;
@@ -369,6 +369,7 @@ namespace oc {
             reconstruction.start = clock();
         }
         reconstruction.t3dr_is_running_ = t3dr_is_running;
+        reconstruction.jumped = false;
         reconstruction.binder_mutex_.unlock();
     }
 

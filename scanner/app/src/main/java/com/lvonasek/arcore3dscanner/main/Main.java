@@ -805,9 +805,7 @@ public class Main extends AbstractActivity implements View.OnClickListener,
       runOnUiThread(() -> mHandMotionView.setVisibility(View.GONE));
     }
     if (JNI.didARjump()) {
-      m3drRunning = false;
-      JNI.onToggleButtonClicked(false);
-      runOnUiThread(() -> mToggleButton.setImageResource(m3drRunning ? R.drawable.ic_pause : R.drawable.ic_record));
+      Log.d(TAG, "AR tracking jitter detected, continuing scan");
     }
 
     if (mRecording) {

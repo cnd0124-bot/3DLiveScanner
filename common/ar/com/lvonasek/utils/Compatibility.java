@@ -107,26 +107,35 @@ public class Compatibility {
     }
 
     public static boolean isGoogleDepthSupported(Activity activity) {
+        Session session = null;
         try {
             if (!isPlayStoreSupported(activity)) {
                 return false;
             }
 
-            Session session = new Session(activity);
-            return session.isDepthModeSupported(Config.DepthMode.RAW_DEPTH_ONLY);
+            session = new Session(activity);
+            return session.isDepthModeSupported(Config.DepthMode.RAW_DEPTH_ONLY) ||
+                   session.isDepthModeSupported(Config.DepthMode.AUTOMATIC);
         } catch (Exception e) {
             e.printStackTrace();
+        } finally {
+            if (session != null) {
+                try {
+                    session.close();
+                } catch (Exception ignored) {}
+            }
         }
         return false;
     }
 
     public static boolean isGoogleToFSupported(Activity activity) {
+        Session session = null;
         try {
             if (!isPlayStoreSupported(activity)) {
                 return false;
             }
 
-            Session session = new Session(activity);
+            session = new Session(activity);
             for (CameraConfig config : session.getSupportedCameraConfigs()) {
                 if (config.getDepthSensorUsage() == CameraConfig.DepthSensorUsage.REQUIRE_AND_USE) {
                     return true;
@@ -134,6 +143,12 @@ public class Compatibility {
             }
         } catch (Exception e) {
             e.printStackTrace();
+        } finally {
+            if (session != null) {
+                try {
+                    session.close();
+                } catch (Exception ignored) {}
+            }
         }
         return false;
     }
