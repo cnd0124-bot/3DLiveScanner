@@ -173,7 +173,7 @@ namespace oc {
                             if (reconstruction.t3dr_is_running_) {
                                 reconstruction.frame_points = ar->GetPointCloud(maxDiff);
 
-                                int scale = reconstruction.frame_image->GetWidth() / 360;
+                                int scale = reconstruction.frame_image ? std::max(1, (int)(reconstruction.frame_image->GetWidth() / 360)) : 1;
                                 if (reconstruction.request_image) {
                                     delete reconstruction.request_image;
                                     reconstruction.request_image = 0;
@@ -181,7 +181,7 @@ namespace oc {
 
                                 if (reconstruction.frame_points.empty()) {
                                     reconstruction.binder_mutex_.unlock();
-                                } else if (reconstruction.pose_correction && lastFrame) {
+                                } else if (reconstruction.pose_correction && lastFrame && !reconstruction.scene.static_meshes_.empty()) {
 
                                     //create requested image for pose correction
                                     reconstruction.request_image = reconstruction.frame_image->Downscale(scale);
@@ -365,11 +365,14 @@ namespace oc {
                     break;
                 }
             }
-            if (ok && (!reconstruction.lost || zoomable)) {
-                reconstruction.scene.renderer->Render(&s.second->vertices[0][0], &s.second->normals[0][0], 0,
-                                                      (unsigned int*)&s.second->colors[0][0],
-                                                      s.second->num_faces * 3, &s.second->faces[0][0]);
-                output = true;
+            if (s.second && s.second->num_faces > 0 && s.second->num_vertices > 0 &&
+                s.second->vertices && s.second->normals && s.second->colors && s.second->faces) {
+                if (ok && (!reconstruction.lost || zoomable)) {
+                    reconstruction.scene.renderer->Render(&s.second->vertices[0][0], &s.second->normals[0][0], 0,
+                                                          (unsigned int*)&s.second->colors[0][0],
+                                                          s.second->num_faces * 3, &s.second->faces[0][0]);
+                    output = true;
+                }
             }
         }
         return output;

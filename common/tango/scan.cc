@@ -36,10 +36,13 @@ namespace oc {
     void TangoScan::ClearGeometry() {
         Tango3DR_Status ret;
         for (std::pair<GridIndex, Tango3DR_Mesh*> p : meshes) {
-            ret = Tango3DR_Mesh_destroy(p.second);
-            if (ret != TANGO_3DR_SUCCESS)
-                exit(EXIT_SUCCESS);
-            delete p.second;
+            if (p.second) {
+                ret = Tango3DR_Mesh_destroy(p.second);
+                if (ret != TANGO_3DR_SUCCESS) {
+                    LOGI("Tango3DR_Mesh_destroy status: %d", ret);
+                }
+                delete p.second;
+            }
         }
         meshes.clear();
     }
@@ -66,10 +69,13 @@ namespace oc {
         Tango3DR_Status ret;
         for (GridIndex gi : toDelete) {
             if (meshes.find(gi) != meshes.end()) {
-                ret = Tango3DR_Mesh_destroy(meshes[gi]);
-                if (ret != TANGO_3DR_SUCCESS)
-                    exit(EXIT_SUCCESS);
-                delete meshes[gi];
+                if (meshes[gi]) {
+                    ret = Tango3DR_Mesh_destroy(meshes[gi]);
+                    if (ret != TANGO_3DR_SUCCESS) {
+                        LOGI("Tango3DR_Mesh_destroy status: %d", ret);
+                    }
+                    delete meshes[gi];
+                }
                 meshes.erase(gi);
             }
         }
@@ -78,6 +84,9 @@ namespace oc {
     std::vector<Mesh> TangoScan::Export() {
         std::vector<Mesh> output;
         for (auto& m : meshes) {
+            if (!m.second || m.second->num_vertices == 0 || m.second->num_faces == 0 ||
+                !m.second->vertices || !m.second->faces || !m.second->colors)
+                continue;
             Mesh mesh;
             for (int i = 0; i < m.second->num_vertices; i++) {
                 glm::vec3 v(0);
@@ -108,10 +117,13 @@ namespace oc {
         for (std::pair<GridIndex, Tango3DR_Mesh*> p : added) {
             lastMerged.push_back(p.first);
             if (meshes.find(p.first) != meshes.end()) {
-                ret = Tango3DR_Mesh_destroy(meshes[p.first]);
-                if (ret != TANGO_3DR_SUCCESS)
-                    exit(EXIT_SUCCESS);
-                delete meshes[p.first];
+                if (meshes[p.first]) {
+                    ret = Tango3DR_Mesh_destroy(meshes[p.first]);
+                    if (ret != TANGO_3DR_SUCCESS) {
+                        LOGI("Tango3DR_Mesh_destroy status: %d", ret);
+                    }
+                    delete meshes[p.first];
+                }
             }
             meshes[p.first] = p.second;
         }
@@ -121,10 +133,13 @@ namespace oc {
         Tango3DR_Status ret;
         for (std::pair<GridIndex, Tango3DR_Mesh*> p : data) {
             if (meshes.find(p.first) != meshes.end()) {
-                ret = Tango3DR_Mesh_destroy(meshes[p.first]);
-                if (ret != TANGO_3DR_SUCCESS)
-                    exit(EXIT_SUCCESS);
-                delete meshes[p.first];
+                if (meshes[p.first]) {
+                    ret = Tango3DR_Mesh_destroy(meshes[p.first]);
+                    if (ret != TANGO_3DR_SUCCESS) {
+                        LOGI("Tango3DR_Mesh_destroy status: %d", ret);
+                    }
+                    delete meshes[p.first];
+                }
             }
             meshes[p.first] = p.second;
         }
@@ -133,14 +148,20 @@ namespace oc {
     void TangoScan::Reset3DR(double res, double dmin, double dmax, int noise, bool clearing) {
         Tango3DR_Status ret;
         for (std::pair<GridIndex, Tango3DR_Mesh*> p : meshes) {
-            ret = Tango3DR_Mesh_destroy(p.second);
-            if (ret != TANGO_3DR_SUCCESS)
-                exit(EXIT_SUCCESS);
-            delete p.second;
+            if (p.second) {
+                ret = Tango3DR_Mesh_destroy(p.second);
+                if (ret != TANGO_3DR_SUCCESS) {
+                    LOGI("Tango3DR_Mesh_destroy status: %d", ret);
+                }
+                delete p.second;
+            }
         }
         meshes.clear();
-        Tango3DR_clear(context);
-        Tango3DR_ReconstructionContext_destroy(context);
+        if (context != nullptr) {
+            Tango3DR_clear(context);
+            Tango3DR_ReconstructionContext_destroy(context);
+            context = nullptr;
+        }
         Setup3DR(res, dmin, dmax, noise, clearing);
         lastMerged.clear();
     }
@@ -150,27 +171,27 @@ namespace oc {
         Tango3DR_Status t3dr_err;
         t3dr_err = Tango3DR_Config_setDouble(t3dr_config, "resolution", res);
         if (t3dr_err != TANGO_3DR_SUCCESS)
-            exit(EXIT_SUCCESS);
+            LOGI("Setup3DR resolution error: %d", t3dr_err);
 
         t3dr_err = Tango3DR_Config_setDouble(t3dr_config, "min_depth", dmin);
         if (t3dr_err != TANGO_3DR_SUCCESS)
-            exit(EXIT_SUCCESS);
+            LOGI("Setup3DR min_depth error: %d", t3dr_err);
 
         t3dr_err = Tango3DR_Config_setDouble(t3dr_config, "max_depth", dmax);
         if (t3dr_err != TANGO_3DR_SUCCESS)
-            exit(EXIT_SUCCESS);
+            LOGI("Setup3DR max_depth error: %d", t3dr_err);
 
         t3dr_err = Tango3DR_Config_setBool(t3dr_config, "generate_color", true);
         if (t3dr_err != TANGO_3DR_SUCCESS)
-            exit(EXIT_SUCCESS);
+            LOGI("Setup3DR generate_color error: %d", t3dr_err);
 
         t3dr_err = Tango3DR_Config_setBool(t3dr_config, "use_space_clearing", clearing);
         if (t3dr_err != TANGO_3DR_SUCCESS)
-            exit(EXIT_SUCCESS);
+            LOGI("Setup3DR use_space_clearing error: %d", t3dr_err);
 
         t3dr_err = Tango3DR_Config_setBool(t3dr_config, "use_parallel_integration", true);
         if (t3dr_err != TANGO_3DR_SUCCESS)
-            exit(EXIT_SUCCESS);
+            LOGI("Setup3DR use_parallel_integration error: %d", t3dr_err);
 
         Tango3DR_Config_setInt32(t3dr_config, "min_num_vertices", noise);
 #ifdef TANGO
@@ -179,7 +200,7 @@ namespace oc {
 
         context = Tango3DR_ReconstructionContext_create(t3dr_config);
         if (context == nullptr)
-            exit(EXIT_SUCCESS);
+            LOGI("Setup3DR ReconstructionContext_create returned NULL");
         Tango3DR_Config_destroy(t3dr_config);
 
 #ifdef TANGO
@@ -217,8 +238,13 @@ namespace oc {
 
             pair.second = new Tango3DR_Mesh();
             ret = Tango3DR_extractMeshSegment(context, t3dr_updated.indices[it], pair.second);
-            if (ret != TANGO_3DR_SUCCESS)
-                exit(EXIT_SUCCESS);
+            if (ret != TANGO_3DR_SUCCESS || pair.second->num_faces == 0 || pair.second->num_vertices == 0) {
+                if (ret == TANGO_3DR_SUCCESS) {
+                    Tango3DR_Mesh_destroy(pair.second);
+                }
+                delete pair.second;
+                continue;
+            }
             added.push_back(pair);
         }
         Tango3DR_GridIndexArray_destroy(&t3dr_updated);

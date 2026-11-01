@@ -20,113 +20,119 @@ namespace oc {
     }
 
     void* ProcessPoseCorrection(void*) {
-
-        double best_accuracy = INT_MAX;
-        glm::mat4 orig_mat = g_reconstruction->frame_viewmat;
-        glm::mat4 best_mat = g_reconstruction->frame_viewmat;
-        Reconstruction::CVDescription camera = g_reconstruction->DetectFeatures(g_reconstruction->request_image);
-        Reconstruction::CVDescription render = g_reconstruction->DetectFeatures(g_reconstruction->rendered_image);
-        g_reconstruction->request_newprojection = false;
-
-        //validate continuity
-        if (camera.keypoints.empty() || render.keypoints.empty()) {
-            g_reconstruction->Start(Reconstruction::RECONSTRUCTION);
-            pthread_detach(g_reconstruction->threadId);
-            return 0;
-        }
-
-        //convert points into 3D
-        std::vector<glm::vec3> points3d;
-        float w = g_reconstruction->request_image->GetWidth();
-        float h = g_reconstruction->request_image->GetHeight();
-        if (g_reconstruction->scene.static_meshes_.empty()) {
-            glm::mat4 screen2world = glm::inverse(g_reconstruction->frame_pose[SCREEN_CAMERA]);
-            for (cv::KeyPoint& p : render.keypoints) {
-                glm::vec4 depth = g_reconstruction->rendered_depth->GetColorRGBA(p.pt.x, p.pt.y);
-                float x = 2.0f * p.pt.x / w - 1.0f;
-                float y = 2.0f * p.pt.y / h - 1.0f;
-                float z = (depth.r + depth.g + depth.b) / 255.0f * 2.0f;
-                glm::vec4 v = screen2world * glm::vec4(x, y, z, 1.0f);
-                points3d.emplace_back(v / fabs(v.w));
+        try {
+            if (!g_reconstruction || !g_reconstruction->request_image || !g_reconstruction->rendered_image) {
+                if (g_reconstruction) {
+                    g_reconstruction->Start(Reconstruction::RECONSTRUCTION);
+                    pthread_detach(g_reconstruction->threadId);
+                }
+                return 0;
             }
-        } else {
-            std::vector<glm::vec2> points2d;
-            for (cv::KeyPoint& p : render.keypoints) {
-                points2d.emplace_back(p.pt.x, h - p.pt.y);
-            }
-            points3d = g_reconstruction->selector.Transform(g_reconstruction->scene.static_meshes_,
-                                                            g_reconstruction->frame_pose[SCREEN_CAMERA],
-                                                            points2d);
-        }
 
-        std::vector<cv::DMatch> allMatches, matches;
-        matcher.match(camera.descriptors, render.descriptors, allMatches);
-        for (cv::DMatch& m : allMatches) {
-            cv::Point2f p1 = camera.keypoints[m.queryIdx].pt;
-            cv::Point2f p2 = render.keypoints[m.trainIdx].pt;
-            float dx = p1.x - p2.x;
-            float dy = p1.y - p2.y;
-            float diff = sqrt(dx * dx + dy * dy);
-            if (diff < 10) {
-                matches.push_back(m);
-            }
-        }
+            double best_accuracy = INT_MAX;
+            glm::mat4 orig_mat = g_reconstruction->frame_viewmat;
+            glm::mat4 best_mat = g_reconstruction->frame_viewmat;
+            Reconstruction::CVDescription camera = g_reconstruction->DetectFeatures(g_reconstruction->request_image);
+            Reconstruction::CVDescription render = g_reconstruction->DetectFeatures(g_reconstruction->rendered_image);
+            g_reconstruction->request_newprojection = false;
 
-        while (true) {
+            //validate continuity
+            if (camera.keypoints.empty() || render.keypoints.empty() ||
+                camera.descriptors.empty() || render.descriptors.empty()) {
+                g_reconstruction->Start(Reconstruction::RECONSTRUCTION);
+                pthread_detach(g_reconstruction->threadId);
+                return 0;
+            }
+
+            //convert points into 3D
+            std::vector<glm::vec3> points3d;
+            float w = g_reconstruction->request_image->GetWidth();
+            float h = g_reconstruction->request_image->GetHeight();
+            if (g_reconstruction->scene.static_meshes_.empty()) {
+                glm::mat4 screen2world = glm::inverse(g_reconstruction->frame_pose[SCREEN_CAMERA]);
+                for (cv::KeyPoint& p : render.keypoints) {
+                    glm::vec4 depth = g_reconstruction->rendered_depth->GetColorRGBA(p.pt.x, p.pt.y);
+                    float x = 2.0f * p.pt.x / w - 1.0f;
+                    float y = 2.0f * p.pt.y / h - 1.0f;
+                    float z = (depth.r + depth.g + depth.b) / 255.0f * 2.0f;
+                    glm::vec4 v = screen2world * glm::vec4(x, y, z, 1.0f);
+                    points3d.emplace_back(v / fabs(v.w));
+                }
+            } else {
+                std::vector<glm::vec2> points2d;
+                for (cv::KeyPoint& p : render.keypoints) {
+                    points2d.emplace_back(p.pt.x, h - p.pt.y);
+                }
+                points3d = g_reconstruction->selector.Transform(g_reconstruction->scene.static_meshes_,
+                                                                g_reconstruction->frame_pose[SCREEN_CAMERA],
+                                                                points2d);
+            }
+
+            std::vector<cv::DMatch> allMatches, matches;
+            matcher.match(camera.descriptors, render.descriptors, allMatches);
+            for (cv::DMatch& m : allMatches) {
+                if (m.queryIdx < camera.keypoints.size() && m.trainIdx < render.keypoints.size()) {
+                    cv::Point2f p1 = camera.keypoints[m.queryIdx].pt;
+                    cv::Point2f p2 = render.keypoints[m.trainIdx].pt;
+                    float dx = p1.x - p2.x;
+                    float dy = p1.y - p2.y;
+                    float diff = sqrt(dx * dx + dy * dy);
+                    if (diff < 10) {
+                        matches.push_back(m);
+                    }
+                }
+            }
+
             while (true) {
+                while (true) {
 
-                //get next matrix
-                if (g_reconstruction->request_matrix.empty()) {
+                    //get next matrix
+                    if (g_reconstruction->request_matrix.empty()) {
+                        break;
+                    }
+                    glm::mat4 matrix = g_reconstruction->request_matrix[0];
+                    g_reconstruction->request_matrix.erase(g_reconstruction->request_matrix.begin());
+
+                    //reproject CV descriptors
+                    glm::mat4 m = g_reconstruction->scene.renderer->camera.projection * matrix;
+                    for (int i = 0; i < points3d.size() && i < render.keypoints.size(); i++) {
+                        glm::vec4 v = m * glm::vec4(points3d[i], 1);
+                        v /= fabs(v.w);
+                        v = 0.5f * v + 0.5f;
+                        render.keypoints[i].pt.x = v.x * w;
+                        render.keypoints[i].pt.y = v.y * h;
+                    }
+
+                    //determine pose accuracy
+                    double accuracy = g_reconstruction->GetAccuracy(matches, camera, render);
+
+                    //decision on better pose
+                    if (best_accuracy > accuracy) {
+                        best_accuracy = accuracy;
+                        best_mat = matrix;
+                    }
+                }
+
+                //apply value
+                g_reconstruction->frame_pose = ARCoreService::GetPose(g_reconstruction->frame_calibration, best_mat);
+                g_reconstruction->frame_viewmat = best_mat;
+
+                //next steps
+                if ((g_reconstruction->request_distance > 0.0005f) && (best_accuracy != INT_MAX)) {
+                    g_reconstruction->request_distance *= 0.25f;
+                    g_reconstruction->AddPoses();
+                } else {
                     break;
                 }
-                glm::mat4 matrix = g_reconstruction->request_matrix[0];
-                g_reconstruction->request_matrix.erase(g_reconstruction->request_matrix.begin());
-
-                //reproject CV descriptors
-                glm::mat4 m = g_reconstruction->scene.renderer->camera.projection * matrix;
-                for (int i = 0; i < points3d.size(); i++) {
-                    glm::vec4 v = m * glm::vec4(points3d[i], 1);
-                    v /= fabs(v.w);
-                    v = 0.5f * v + 0.5f;
-                    render.keypoints[i].pt.x = v.x * w;
-                    render.keypoints[i].pt.y = v.y * h;
-                }
-
-                //determine pose accuracy
-                double accuracy = g_reconstruction->GetAccuracy(matches, camera, render);
-
-                //decision on better pose
-                if (best_accuracy > accuracy) {
-                    best_accuracy = accuracy;
-                    best_mat = matrix;
-                }
             }
 
-            //apply value
-            g_reconstruction->frame_pose = ARCoreService::GetPose(g_reconstruction->frame_calibration, best_mat);
-            g_reconstruction->frame_viewmat = best_mat;
-
-            //next steps
-            if ((g_reconstruction->request_distance > 0.0005f) && (best_accuracy != INT_MAX)) {
-                g_reconstruction->request_distance *= 0.25f;
-                g_reconstruction->AddPoses();
-            } else {
-                break;
+            //start reconstruction
+            if (best_accuracy > 3.0f) {
+                g_reconstruction->frame_pose = ARCoreService::GetPose(g_reconstruction->frame_calibration, orig_mat);
+                g_reconstruction->frame_viewmat = orig_mat;
             }
-        }
-
-        /*
-        g_reconstruction->event_mutex_.lock();
-        sprintf(g_reconstruction->pose_feedback, "%f", best_accuracy);
-        g_reconstruction->event_mutex_.unlock();
-        usleep(1000000);
-         */
-
-
-        //start reconstruction
-        if (best_accuracy > 3.0f) {
-            g_reconstruction->frame_pose = ARCoreService::GetPose(g_reconstruction->frame_calibration, orig_mat);
-            g_reconstruction->frame_viewmat = orig_mat;
+        } catch (...) {
+            LOGI("Exception in ProcessPoseCorrection, continuing to reconstruction");
         }
         g_reconstruction->Start(Reconstruction::RECONSTRUCTION);
         pthread_detach(g_reconstruction->threadId);
@@ -134,6 +140,13 @@ namespace oc {
     }
 
     void* ProcessReconstruction(void*) {
+        if (!g_reconstruction || !g_reconstruction->frame_image || !g_reconstruction->scan.Context()) {
+            if (g_reconstruction) {
+                pthread_detach(g_reconstruction->threadId);
+                g_reconstruction->binder_mutex_.unlock();
+            }
+            return 0;
+        }
 
         //process camera calibration
         int scale = g_reconstruction->frame_image->GetWidth() > 1000 ? 3 : 1;
@@ -171,23 +184,31 @@ namespace oc {
         }
 
         //confirm that frame is in dataset
-        camera = g_reconstruction->GetCalibration(1);
-        g_reconstruction->dataset->WriteDistortion(g_reconstruction->frame_distortion);
-        g_reconstruction->texturize.Add(g_reconstruction->frame_image, g_reconstruction->frame_timestamp,
-                                        &camera, g_reconstruction->frame_pose, g_reconstruction->dataset);
+        if (g_reconstruction->dataset) {
+            camera = g_reconstruction->GetCalibration(1);
+            g_reconstruction->dataset->WriteDistortion(g_reconstruction->frame_distortion);
+            g_reconstruction->texturize.Add(g_reconstruction->frame_image, g_reconstruction->frame_timestamp,
+                                            &camera, g_reconstruction->frame_pose, g_reconstruction->dataset);
 
-        //process reconstructed geometry
-        int index = g_reconstruction->texturize.GetLatestIndex(g_reconstruction->dataset);
-        g_reconstruction->dataset->WritePreview(index, g_reconstruction->scan.Added());
-        g_reconstruction->render_mutex_.lock();
-        g_reconstruction->scan.Merge();
-        g_reconstruction->frame_index = index;
-        g_reconstruction->render_mutex_.unlock();
+            //process reconstructed geometry
+            int index = g_reconstruction->texturize.GetLatestIndex(g_reconstruction->dataset);
+            g_reconstruction->dataset->WritePreview(index, g_reconstruction->scan.Added());
+            g_reconstruction->render_mutex_.lock();
+            g_reconstruction->scan.Merge();
+            g_reconstruction->frame_index = index;
+            g_reconstruction->render_mutex_.unlock();
 
-        //save point cloud into dataset
-        Tango3DR_PointCloud* pcl = g_reconstruction->depth.PCL(g_reconstruction->frame_timestamp);
-        g_reconstruction->dataset->WritePointCloud(index, *pcl);
-        Tango3DR_PointCloud_destroy(pcl);
+            //save point cloud into dataset
+            Tango3DR_PointCloud* pcl = g_reconstruction->depth.PCL(g_reconstruction->frame_timestamp);
+            if (pcl) {
+                g_reconstruction->dataset->WritePointCloud(index, *pcl);
+                Tango3DR_PointCloud_destroy(pcl);
+            }
+        } else {
+            g_reconstruction->render_mutex_.lock();
+            g_reconstruction->scan.Merge();
+            g_reconstruction->render_mutex_.unlock();
+        }
 
         //postprocess pointcloud
         g_reconstruction->depth.RES(g_reconstruction->scan.Resolution());
@@ -279,9 +300,10 @@ namespace oc {
     }
 
     Tango3DR_CameraCalibration Reconstruction::GetCalibration(int scale) {
+        Tango3DR_CameraCalibration camera;
+        if (!frame_image || scale <= 0) return camera;
         float w = frame_image->GetWidth() / scale;
         float h = frame_image->GetHeight() / scale;
-        Tango3DR_CameraCalibration camera;
         texturize.ApplyDistortion(camera, frame_distortion);
         camera.width = (uint32_t) w;
         camera.height = (uint32_t) h;
@@ -361,9 +383,13 @@ namespace oc {
             for (std::pair<GridIndex, Tango3DR_Mesh *>& d : dataset->ReadPreview(i, false)) {
                 for (int j = data.size() - 1; j >= 0; j--) {
                     if (data[j].first == d.first) {
-                        Tango3DR_Status ret = Tango3DR_Mesh_destroy(data[j].second);
-                        if (ret != TANGO_3DR_SUCCESS)
-                            exit(EXIT_SUCCESS);
+                        if (data[j].second) {
+                            Tango3DR_Status ret = Tango3DR_Mesh_destroy(data[j].second);
+                            if (ret != TANGO_3DR_SUCCESS) {
+                                LOGI("Tango3DR_Mesh_destroy status: %d", ret);
+                            }
+                            delete data[j].second;
+                        }
                         data.erase(data.begin() + j);
                         if (data.empty()) {
                             break;
@@ -516,8 +542,13 @@ namespace oc {
                 pair.first = p.first;
                 pair.second = new Tango3DR_Mesh();
                 ret = Tango3DR_extractMeshSegment(scan.Context(), pair.first.indices, pair.second);
-                if (ret != TANGO_3DR_SUCCESS)
-                    exit(EXIT_SUCCESS);
+                if (ret != TANGO_3DR_SUCCESS || pair.second->num_faces == 0 || pair.second->num_vertices == 0) {
+                    if (ret == TANGO_3DR_SUCCESS) {
+                        Tango3DR_Mesh_destroy(pair.second);
+                    }
+                    delete pair.second;
+                    continue;
+                }
                 toAdd.push_back(pair);
             }
 

@@ -74,6 +74,7 @@ namespace oc {
 
     void Dataset::WriteDistortion(std::vector<float> data) {
         FILE* file = fopen((dataset + "/distortion.txt").c_str(), "w");
+        if (!file) return;
         fprintf(file, "%d\n", (int)data.size());
         for (int i = 0; i < data.size(); i++) {
             fprintf(file, "%f\n", data[i]);
@@ -83,7 +84,8 @@ namespace oc {
 
     void Dataset::WritePose(int index, std::vector<glm::mat4> pose) {
         FILE* file = fopen(GetFileName(index, ".mat").c_str(), "w");
-        for (int k = 0; k < MAX_CAMERA; k++)
+        if (!file) return;
+        for (int k = 0; k < MAX_CAMERA && k < pose.size(); k++)
             for (int i = 0; i < 4; i++)
                 fprintf(file, "%f %f %f %f\n", pose[k][i][0], pose[k][i][1],
                                                pose[k][i][2], pose[k][i][3]);
@@ -92,12 +94,14 @@ namespace oc {
 
     void Dataset::WriteState(int count, int width, int height, double cx, double cy, double fx, double fy) {
         FILE* file = fopen((dataset + "/state.txt").c_str(), "w");
+        if (!file) return;
         fprintf(file, "%d %d %d %lf %lf %lf %lf\n", count, width, height, cx, cy, fx, fy);
         fclose(file);
     }
 
     void Dataset::WriteYaw(float yaw) {
         FILE* file = fopen((dataset + "/rotation.txt").c_str(), "w");
+        if (!file) return;
         fprintf(file, "%f\n", yaw);
         fclose(file);
     }
@@ -105,7 +109,10 @@ namespace oc {
     Tango3DR_PointCloud Dataset::ReadPointCloud(int index) {
 
         Tango3DR_PointCloud t3dr_depth;
+        t3dr_depth.num_points = 0;
+        t3dr_depth.points = nullptr;
         FILE* file = fopen(GetFileName(index, ".pcl").c_str(), "rb");
+        if (!file) return t3dr_depth;
         fread(&t3dr_depth.num_points, sizeof(int), 1, file);
 
 #ifdef ANDROID
@@ -113,21 +120,27 @@ namespace oc {
 #else
         t3dr_depth.points = new Tango3DR_Vector4[t3dr_depth.num_points];
 #endif
-        fread(t3dr_depth.points, sizeof(Tango3DR_Vector4), t3dr_depth.num_points, file);
+        if (t3dr_depth.num_points > 0 && t3dr_depth.points) {
+            fread(t3dr_depth.points, sizeof(Tango3DR_Vector4), t3dr_depth.num_points, file);
+        }
         fclose(file);
         return t3dr_depth;
     }
 
     void Dataset::WritePointCloud(int index, Tango3DR_PointCloud t3dr_depth) {
         FILE* file = fopen(GetFileName(index, ".pcl").c_str(), "wb");
+        if (!file) return;
         fwrite(&t3dr_depth.num_points, sizeof(uint32_t), 1, file);
-        fwrite(t3dr_depth.points, sizeof(Tango3DR_Vector4), t3dr_depth.num_points, file);
+        if (t3dr_depth.num_points > 0 && t3dr_depth.points) {
+            fwrite(t3dr_depth.points, sizeof(Tango3DR_Vector4), t3dr_depth.num_points, file);
+        }
         fclose(file);
     }
 
     std::vector<std::pair<GridIndex, Tango3DR_Mesh *> > Dataset::ReadPreview(int index, bool empty) {
         FILE* file = fopen(GetFileName(index, ".bin").c_str(), "rb");
         std::vector<std::pair<GridIndex, Tango3DR_Mesh *>> output;
+        if (!file) return output;
         int count = 0;
         fread(&count, sizeof(int), 1, file);
         for (int i = 0; i < count; i++) {
@@ -157,23 +170,35 @@ namespace oc {
                 output[i].second = mesh;
             }
         }
+        fclose(file);
         return output;
     }
 
     void Dataset::WritePreview(int index, std::vector<std::pair<GridIndex, Tango3DR_Mesh *>> preview) {
         FILE* file = fopen(GetFileName(index, ".bin").c_str(), "wb");
+        if (!file) return;
         int count = preview.size();
         fwrite(&count, sizeof(int), 1, file);
         for (std::pair<GridIndex, Tango3DR_Mesh *>& p : preview) {
             fwrite(p.first.indices, sizeof(Tango3DR_GridIndex), 1, file);
         }
         for (std::pair<GridIndex, Tango3DR_Mesh *>& p : preview) {
+            if (!p.second) {
+                uint32_t zero = 0;
+                fwrite(&zero, sizeof(uint32_t), 1, file);
+                fwrite(&zero, sizeof(uint32_t), 1, file);
+                continue;
+            }
             fwrite(&p.second->num_faces, sizeof(uint32_t), 1, file);
             fwrite(&p.second->num_vertices, sizeof(uint32_t), 1, file);
-            fwrite(p.second->vertices, sizeof(Tango3DR_Vector3), p.second->num_vertices, file);
-            fwrite(p.second->normals, sizeof(Tango3DR_Vector3), p.second->num_vertices, file);
-            fwrite(p.second->colors, sizeof(Tango3DR_Color), p.second->num_vertices, file);
-            fwrite(p.second->faces, sizeof(Tango3DR_Face), p.second->num_faces, file);
+            if (p.second->num_vertices > 0 && p.second->vertices)
+                fwrite(p.second->vertices, sizeof(Tango3DR_Vector3), p.second->num_vertices, file);
+            if (p.second->num_vertices > 0 && p.second->normals)
+                fwrite(p.second->normals, sizeof(Tango3DR_Vector3), p.second->num_vertices, file);
+            if (p.second->num_vertices > 0 && p.second->colors)
+                fwrite(p.second->colors, sizeof(Tango3DR_Color), p.second->num_vertices, file);
+            if (p.second->num_faces > 0 && p.second->faces)
+                fwrite(p.second->faces, sizeof(Tango3DR_Face), p.second->num_faces, file);
         }
         fclose(file);
     }

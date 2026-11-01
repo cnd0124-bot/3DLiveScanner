@@ -108,18 +108,6 @@ namespace oc {
     void ARCore::Configure(void *session, void *frame) {
         ar_session_ = static_cast<ArSession *>(session);
         ar_frame_ = static_cast<ArFrame *>(frame);
-
-        int rawSupported = 0;
-        int autoSupported = 0;
-        ArSession_isDepthModeSupported(ar_session_, AR_DEPTH_MODE_RAW_DEPTH_ONLY, &rawSupported);
-        ArSession_isDepthModeSupported(ar_session_, AR_DEPTH_MODE_AUTOMATIC, &autoSupported);
-        if (rawSupported) {
-            useDepth = true;
-            useDepthRaw = true;
-        } else if (autoSupported) {
-            useDepth = true;
-            useDepthRaw = false;
-        }
     }
 
     float ARCore::CountFrameError() {
@@ -652,13 +640,25 @@ namespace oc {
                     ArImage_getTimestamp(ar_session_, image, &timestamp);
 
                     ArImage* image2 = 0;
-                    uint16_t* imgData2;
+                    uint16_t* imgData2 = 0;
+                    int32_t stride2 = 0;
+                    int32_t depthWidth2 = 0;
+                    int32_t depthHeight2 = 0;
                     bool hasSecondary = false;
                     if (useDepthRaw && !has_depth_sensor) {
                         result = ArFrame_acquireDepthImage(ar_session_, ar_frame_, &image2);
-                        if (result == AR_SUCCESS) {
-                            hasSecondary = true;
-                            ArImage_getPlaneData(ar_session_, image2, 0, (const uint8_t**)&imgData2, &dataLength);
+                        if (result == AR_SUCCESS && image2 != nullptr) {
+                            int32_t dataLength2 = 0;
+                            ArImage_getPlaneRowStride(ar_session_, image2, 0, &stride2);
+                            ArImage_getPlaneData(ar_session_, image2, 0, (const uint8_t**)&imgData2, &dataLength2);
+                            ArImage_getWidth(ar_session_, image2, &depthWidth2);
+                            ArImage_getHeight(ar_session_, image2, &depthHeight2);
+                            if (depthWidth2 == depthWidth && depthHeight2 == depthHeight && imgData2 != nullptr) {
+                                hasSecondary = true;
+                            } else {
+                                ArImage_release(image2);
+                                image2 = 0;
+                            }
                         }
                     }
 
@@ -724,7 +724,7 @@ namespace oc {
                                                     break;
                                                 }
                                             }
-                                            c = glm::vec3(x, y, (imgData2[y * stride / 2 + x] & 0xFFFF) * 0.001f);
+                                            c = glm::vec3(x, y, (imgData2[y * stride2 / 2 + x] & 0xFFFF) * 0.001f);
 
                                             //"closed" holes filling
                                             bool horizontal = false, vertical = false;
@@ -763,7 +763,7 @@ namespace oc {
 
                                 //filter depth noise
                                 if (hasSecondary) {
-                                    double filtered = (imgData2[y * stride / 2 + x] & 0xFFFF) * 0.001f;
+                                    double filtered = (imgData2[y * stride2 / 2 + x] & 0xFFFF) * 0.001f;
                                     if (fabs(depth - filtered) < maxErrorFilter) {
                                         depth = filtered;
                                     }
@@ -843,13 +843,15 @@ namespace oc {
                     }
 
                     //cleanup
-                    if (hasConfidence) {
+                    if (hasConfidence && confidenceImage) {
                         ArImage_release(confidenceImage);
                     }
-                    if (hasSecondary) {
+                    if (hasSecondary && image2) {
                         ArImage_release(image2);
                     }
-                    ArImage_release(image);
+                    if (image) {
+                        ArImage_release(image);
+                    }
                     lastDepthTimestamp = timestamp;
                 }
             }

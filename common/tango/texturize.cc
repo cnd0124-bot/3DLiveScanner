@@ -27,8 +27,10 @@ namespace oc {
 
         //save timestamp
         FILE* file = fopen(dataset->GetFileName(poses, ".tms").c_str(), "w");
-        fprintf(file, "%lf", timestamp);
-        fclose(file);
+        if (file) {
+            fprintf(file, "%lf", timestamp);
+            fclose(file);
+        }
 
         //save state
         poses++;
@@ -94,8 +96,9 @@ namespace oc {
             t3dr_image_pose.translation[1] *= scale;
             t3dr_image_pose.translation[2] *= scale;
             Tango3DR_Status ret = Tango3DR_updateTexture(context, &image, &t3dr_image_pose);
-            if (ret != TANGO_3DR_SUCCESS)
-                exit(EXIT_SUCCESS);
+            if (ret != TANGO_3DR_SUCCESS) {
+                LOGI("updateTexture error: %d", ret);
+            }
         }
         delete[] image.data;
     }
@@ -145,14 +148,14 @@ namespace oc {
         Tango3DR_Mesh mesh;
         Tango3DR_Status ret;
         ret = Tango3DR_Mesh_loadFromObj(filename.c_str(), &mesh);
-        if (ret != TANGO_3DR_SUCCESS)
-            exit(EXIT_SUCCESS);
+        if (ret != TANGO_3DR_SUCCESS) {
+            LOGI("Mesh_loadFromObj failed: %d", ret);
+            return false;
+        }
 
         //prevent crash on saving empty model
         if (mesh.num_faces == 0) {
             ret = Tango3DR_Mesh_destroy(&mesh);
-            if (ret != TANGO_3DR_SUCCESS)
-                exit(EXIT_SUCCESS);
             if (verbose)
                 event = "";
             return false;
@@ -162,8 +165,6 @@ namespace oc {
         ScaleMesh(&mesh, scale);
         CreateContext(&mesh, verbose, ignoreConfig);
         ret = Tango3DR_Mesh_destroy(&mesh);
-        if (ret != TANGO_3DR_SUCCESS)
-            exit(EXIT_SUCCESS);
         return true;
     }
 
@@ -174,24 +175,23 @@ namespace oc {
         Tango3DR_Mesh mesh;
         Tango3DR_Status ret;
         ret = Tango3DR_getTexturedMesh(context, &mesh);
-        if (ret != TANGO_3DR_SUCCESS)
-            exit(EXIT_SUCCESS);
+        if (ret != TANGO_3DR_SUCCESS) {
+            LOGI("getTexturedMesh failed: %d", ret);
+            return;
+        }
 
         //save
         if (verbose)
             event = "CONVERT";
         ScaleMesh(&mesh, 1.0f / scale);
         ret = Tango3DR_Mesh_saveToObj(&mesh, filename.c_str());
-        if (ret != TANGO_3DR_SUCCESS)
-            exit(EXIT_SUCCESS);
+        if (ret != TANGO_3DR_SUCCESS) {
+            LOGI("Mesh_saveToObj failed: %d", ret);
+        }
 
         //cleanup
         ret = Tango3DR_Mesh_destroy(&mesh);
-        if (ret != TANGO_3DR_SUCCESS)
-            exit(EXIT_SUCCESS);
         ret = Tango3DR_TexturingContext_destroy(context);
-        if (ret != TANGO_3DR_SUCCESS)
-            exit(EXIT_SUCCESS);
         context = 0;
 
         //add alpha channel to textures
@@ -245,19 +245,21 @@ namespace oc {
         if (verbose)
             event = "SIMPLIFY";
         Tango3DR_Config textureConfig = Tango3DR_Config_create(TANGO_3DR_CONFIG_TEXTURING);
-        if (Tango3DR_Config_setInt32(textureConfig, "texturing_backend", TANGO_3DR_CPU_TEXTURING) != TANGO_3DR_SUCCESS) exit(EXIT_SUCCESS);
+        Tango3DR_Config_setInt32(textureConfig, "texturing_backend", TANGO_3DR_CPU_TEXTURING);
         if (ignoreConfig) {
-            if (Tango3DR_Config_setInt32(textureConfig, "max_num_textures", 1) != TANGO_3DR_SUCCESS) exit(EXIT_SUCCESS);
-            if (Tango3DR_Config_setInt32(textureConfig, "mesh_simplification_factor", 5) != TANGO_3DR_SUCCESS) exit(EXIT_SUCCESS);
-            if (Tango3DR_Config_setInt32(textureConfig, "texture_size", 4096) != TANGO_3DR_SUCCESS) exit(EXIT_SUCCESS);
+            Tango3DR_Config_setInt32(textureConfig, "max_num_textures", 1);
+            Tango3DR_Config_setInt32(textureConfig, "mesh_simplification_factor", 5);
+            Tango3DR_Config_setInt32(textureConfig, "texture_size", 4096);
         } else {
-            if (Tango3DR_Config_setInt32(textureConfig, "max_num_textures", textureCount) != TANGO_3DR_SUCCESS) exit(EXIT_SUCCESS);
-            if (Tango3DR_Config_setInt32(textureConfig, "mesh_simplification_factor", meshSimplification) != TANGO_3DR_SUCCESS) exit(EXIT_SUCCESS);
-            if (Tango3DR_Config_setInt32(textureConfig, "texture_size", textureResolution) != TANGO_3DR_SUCCESS) exit(EXIT_SUCCESS);
-            if (Tango3DR_Config_setDouble(textureConfig, "min_resolution", 0.001 * scale) != TANGO_3DR_SUCCESS) exit(EXIT_SUCCESS);
+            Tango3DR_Config_setInt32(textureConfig, "max_num_textures", textureCount);
+            Tango3DR_Config_setInt32(textureConfig, "mesh_simplification_factor", meshSimplification);
+            Tango3DR_Config_setInt32(textureConfig, "texture_size", textureResolution);
+            Tango3DR_Config_setDouble(textureConfig, "min_resolution", 0.001 * scale);
         }
         context = Tango3DR_TexturingContext_create(textureConfig, mesh);
-        if (context == nullptr) exit(EXIT_SUCCESS);
+        if (context == nullptr) {
+            LOGI("Tango3DR_TexturingContext_create returned NULL");
+        }
         Tango3DR_Config_destroy(textureConfig);
     }
 

@@ -116,15 +116,20 @@ namespace oc {
     }
 
     unsigned char* Image::ExtractYUVDownscaled(unsigned int s) {
-        int yIndex = 0;
-        unsigned int uvIndex = width / s * height / s;
+        if (s == 0) s = 1;
+        unsigned int w_down = (width + s - 1) / s;
+        unsigned int h_down = (height + s - 1) / s;
+        unsigned int uvIndex = w_down * h_down;
+        unsigned int maxBufferSize = uvIndex * 3;
+        unsigned char* output = new unsigned char[maxBufferSize]();
+        unsigned int yIndex = 0;
         int R, G, B, Y, U, V;
         int index = 0;
         bool odd = false;
-        unsigned char* output = new unsigned char[uvIndex * 2];
         for (unsigned int y = 0; y < height; y += s) {
             odd = !odd;
             for (unsigned int x = 0; x < width; x += s) {
+                if (yIndex >= uvIndex) break;
                 B = data[((height - 1 - y) * width + x) * 4 + 0];
                 G = data[((height - 1 - y) * width + x) * 4 + 1];
                 R = data[((height - 1 - y) * width + x) * 4 + 2];
@@ -135,7 +140,7 @@ namespace oc {
                 U = ( ( 112 * R -  94 * G -  18 * B + 128) >> 8) + 128;
 
                 output[yIndex++] = (uint8_t) ((Y < 0) ? 0 : ((Y > 255) ? 255 : Y));
-                if (odd && index % 2 == 0) {
+                if (odd && index % 2 == 0 && uvIndex + 1 < maxBufferSize) {
                     output[uvIndex++] = (uint8_t)((V<0) ? 0 : ((V > 255) ? 255 : V));
                     output[uvIndex++] = (uint8_t)((U<0) ? 0 : ((U > 255) ? 255 : U));
                 }
@@ -242,17 +247,22 @@ namespace oc {
     }
 
     Image* Image::Downscale(int scale) {
+        if (scale <= 0) scale = 1;
         int w = width / scale;
         int h = height / scale;
+        if (w <= 0) w = 1;
+        if (h <= 0) h = 1;
         Image* output = new Image(w, h);
         for (int x = 0; x < w; x++) {
             for (int y = 0; y < h; y++) {
                 int i = (y * scale * width + x * scale) * 4;
                 int o = (y * w + x) * 4;
-                output->data[o + 0] = data[i + 0];
-                output->data[o + 1] = data[i + 1];
-                output->data[o + 2] = data[i + 2];
-                output->data[o + 3] = data[i + 3];
+                if (i + 3 < width * height * 4 && o + 3 < w * h * 4) {
+                    output->data[o + 0] = data[i + 0];
+                    output->data[o + 1] = data[i + 1];
+                    output->data[o + 2] = data[i + 2];
+                    output->data[o + 3] = data[i + 3];
+                }
             }
         }
         return output;

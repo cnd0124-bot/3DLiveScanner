@@ -40,6 +40,8 @@ namespace oc {
     void Scene::BindMixedShader() {
         if (!mixed_shader)
             mixed_shader = new GLSL(MixedVertexShader(), MixedFragmentShader());
+        if (!color_vertex_shader)
+            color_vertex_shader = new GLSL(ColorVertexShader(), ColorFragmentShader());
 
         if (showNormals || projectTexture < 0) {
             color_vertex_shader->Bind();
@@ -191,6 +193,8 @@ namespace oc {
             }
         }
 
+        if (!color_vertex_shader)
+            color_vertex_shader = new GLSL(ColorVertexShader(), ColorFragmentShader());
         color_vertex_shader->Bind();
         color_vertex_shader->UniformFloat("u_uniformNormals", 0);
         color_vertex_shader->UniformFloat("u_uniformBegin", 65536);
@@ -198,7 +202,9 @@ namespace oc {
         color_vertex_shader->UniformVec3("u_uniformCamera", p.x, p.y, p.z);
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_DST_ALPHA);
-        renderer->Render(&grid_.vertices[0][0], &grid_.vertices[0][0], 0, &grid_.colors[0], grid_.vertices.size(), 0, GL_LINES);
+        if (!grid_.vertices.empty() && !grid_.colors.empty()) {
+            renderer->Render(&grid_.vertices[0][0], &grid_.vertices[0][0], 0, &grid_.colors[0], grid_.vertices.size(), 0, GL_LINES);
+        }
         color_vertex_shader->UniformFloat("u_uniformNormals", showNormals ? 1 : 0);
         glDisable(GL_BLEND);
     }

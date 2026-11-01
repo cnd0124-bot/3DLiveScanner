@@ -86,8 +86,10 @@ namespace oc {
         glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, rboID[0]);
 
         /// check FBO status
-        if(glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
-            exit(EXIT_SUCCESS);
+        GLenum fboStatus = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+        if(fboStatus != GL_FRAMEBUFFER_COMPLETE) {
+            LOGI("GLRenderer FBO status not complete: 0x%x", fboStatus);
+        }
 
         //set viewport
         glBindFramebuffer(GL_FRAMEBUFFER, 0);

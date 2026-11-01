@@ -216,6 +216,11 @@ public class Main extends AbstractActivity implements View.OnClickListener,
     if (m3drRunning) {
       runOnUiThread(() -> mHandMotionView.setVisibility(View.VISIBLE));
     }
+    runOnUiThread(() -> {
+      if (!mPhotoMode && mToggleButton != null) {
+        mToggleButton.setImageResource(m3drRunning ? R.drawable.ic_pause : R.drawable.ic_record);
+      }
+    });
 
     if (texturize) {
       String export = pref.getString(getString(com.lvonasek.arcore3dscanner.R.string.pref_mode), "realtime");
@@ -536,11 +541,11 @@ public class Main extends AbstractActivity implements View.OnClickListener,
         CommonDialogs.confirmDialog(this, R.string.scan_discard, new Runnable() {
           @Override
           public void run() {
-            System.exit(0);
+            finish();
           }
         });
       } else {
-        System.exit(0);
+        finish();
       }
     } else {
       super.onBackPressed();
@@ -575,10 +580,10 @@ public class Main extends AbstractActivity implements View.OnClickListener,
     else if (mARBinded && !isFaceModeOn(this)) {
       m3drRunning = false;
       JNI.onToggleButtonClicked(m3drRunning);
-      mToggleButton.setImageResource(m3drRunning ? R.drawable.ic_pause : R.drawable.ic_record);
+      if (mToggleButton != null) {
+        mToggleButton.setImageResource(m3drRunning ? R.drawable.ic_pause : R.drawable.ic_record);
+      }
       JNI.onPause();
-    } else {
-      System.exit(0);
     }
   }
 
