@@ -408,6 +408,9 @@ public class Main extends AbstractActivity implements View.OnClickListener,
     if (id == R.id.toggle_button) {
       if (mPhotoMode) {
         JNI.onToggleButtonClicked(true);
+        if (mToggleButton != null) {
+          mToggleButton.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP);
+        }
       } else {
         m3drRunning = !m3drRunning;
         JNI.onToggleButtonClicked(m3drRunning);

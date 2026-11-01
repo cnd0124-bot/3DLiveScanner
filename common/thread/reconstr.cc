@@ -227,6 +227,8 @@ namespace oc {
     }
 
     Reconstruction::Reconstruction() {
+        start = clock();
+        frame_timestamp = 0;
         dataset = nullptr;
         jumped = false;
         paused = true;

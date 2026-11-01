@@ -32,22 +32,25 @@ namespace oc {
                 useDepth = false;
                 useDepthRaw = false;
             } else {
-                useDepthRaw = true;
                 if (depthCamera && rawSupported) {
                     ArConfig_setDepthMode(ar_session_, ar_config, AR_DEPTH_MODE_RAW_DEPTH_ONLY);
                     useDepth = true;
+                    useDepthRaw = true;
                 } else if (autoSupported) {
                     ArConfig_setDepthMode(ar_session_, ar_config, AR_DEPTH_MODE_AUTOMATIC);
                     useDepth = true;
+                    useDepthRaw = false;
                 } else if (rawSupported) {
                     ArConfig_setDepthMode(ar_session_, ar_config, AR_DEPTH_MODE_RAW_DEPTH_ONLY);
                     useDepth = true;
+                    useDepthRaw = true;
                 } else {
                     int alwaysSupported = 0;
                     ArSession_isDepthModeSupported(ar_session_, AR_DEPTH_MODE_ALWAYS_ENABLED, &alwaysSupported);
                     if (alwaysSupported) {
                         ArConfig_setDepthMode(ar_session_, ar_config, AR_DEPTH_MODE_ALWAYS_ENABLED);
                         useDepth = true;
+                        useDepthRaw = false;
                     } else {
                         ArConfig_setDepthMode(ar_session_, ar_config, AR_DEPTH_MODE_DISABLED);
                         useDepth = false;
@@ -880,6 +883,9 @@ namespace oc {
 
         if (!depth_points.empty()) {
             points = depth_points;
+            for (auto& fp : feature_points) {
+                points.push_back(fp);
+            }
         } else {
             points = feature_points;
         }

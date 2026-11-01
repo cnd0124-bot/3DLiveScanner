@@ -158,11 +158,7 @@ namespace oc {
                     reconstruction.frame_viewmat = ar->GetView();
 
                     if (!ar->IsFaceMode()) {
-
-                        if ((reconstruction.frame_timestamp > 10) && reconstruction.scene.static_meshes_.empty()) {
-                            reconstruction.start = clock();
-                            reconstruction.binder_mutex_.unlock();
-                        } else if (ar->GetPoseDiff() < maxDiff) {
+                        if (ar->GetPoseDiff() < maxDiff) {
                             if (reconstruction.t3dr_is_running_) {
                                 reconstruction.event_mutex_.lock();
                                 sprintf(reconstruction.pose_feedback, "");
@@ -380,6 +376,9 @@ namespace oc {
 
     void App::OnToggleButtonClicked(bool t3dr_is_running) {
         reconstruction.binder_mutex_.lock();
+        if (t3dr_is_running && !reconstruction.t3dr_is_running_) {
+            reconstruction.start = clock();
+        }
         reconstruction.t3dr_is_running_ = t3dr_is_running;
         reconstruction.binder_mutex_.unlock();
     }

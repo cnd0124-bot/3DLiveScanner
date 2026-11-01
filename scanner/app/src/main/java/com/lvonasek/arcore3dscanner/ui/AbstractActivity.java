@@ -310,6 +310,8 @@ public abstract class AbstractActivity extends Activity {
   }
 
   public static File getModel(File folder) {
+    if (folder == null) return null;
+    if (folder.isFile()) return folder;
     ArrayList<String> files = AbstractActivity.listFiles(folder);
     if (folder.getAbsolutePath().endsWith(Exporter.EXT_OBJ)) {
       for (String s : files) {
@@ -324,13 +326,20 @@ public abstract class AbstractActivity extends Activity {
         File f = new File(s);
         if (f.getAbsolutePath().toLowerCase().endsWith(Exporter.EXT_PLY))
           return f;
-        return folder;
       }
+      return folder;
     }
     if (folder.getAbsolutePath().endsWith(Exporter.EXT_DXF)) {
       return folder;
     }
-    return null;
+    for (String s : files) {
+      File f = new File(s);
+      if (f.getAbsolutePath().toLowerCase().endsWith(Exporter.EXT_OBJ))
+        return f;
+      if (f.getAbsolutePath().toLowerCase().endsWith(Exporter.EXT_PLY))
+        return f;
+    }
+    return folder;
   }
 
   public static String getPath(boolean migrate) {
