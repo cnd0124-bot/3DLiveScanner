@@ -9,9 +9,12 @@ import android.content.SharedPreferences;
 import android.content.pm.ActivityInfo;
 import android.graphics.Color;
 import android.location.Location;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Environment;
 import android.preference.PreferenceManager;
+import android.provider.Settings;
 import android.util.DisplayMetrics;
 import android.util.Log;
 import android.view.Display;
@@ -189,13 +192,21 @@ public class Main extends AbstractActivity implements View.OnClickListener,
     }
     int texture_res = 2048;
 
-    String t = mToPostprocess != null ? mToPostprocess : getTempPath().getAbsolutePath();
+    File temp = getTempPath();
+    temp.mkdirs();
+    String t = mToPostprocess != null ? mToPostprocess : temp.getAbsolutePath();
     JNI.motionTrackingMessages = !isFaceModeOn(this);
     JNI.setTextureParams(decimation, texture_res, texture_max);
     if (!JNI.onARServiceConnected(this, res, dmin, dmax, noise, holes, poses, disto, offst,
                               flash, mode, clear, t.getBytes())) {
-      showAndroidBugDialog();
-      return;
+      File fallback = new File(getExternalFilesDir(null), "dataset");
+      fallback.mkdirs();
+      t = fallback.getAbsolutePath();
+      if (!JNI.onARServiceConnected(this, res, dmin, dmax, noise, holes, poses, disto, offst,
+                                flash, mode, clear, t.getBytes())) {
+        showAndroidBugDialog();
+        return;
+      }
     }
     JNI.onToggleButtonClicked(m3drRunning);
     mCameraControl.updateView();
@@ -923,14 +934,26 @@ public class Main extends AbstractActivity implements View.OnClickListener,
   private void showAndroidBugDialog() {
     runOnUiThread(() -> {
       if (Build.VERSION.SDK_INT >= 30) {
+        if (!Environment.isExternalStorageManager()) {
+          try {
+            Intent intent = new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION);
+            intent.setData(Uri.parse("package:" + getPackageName()));
+            startActivity(intent);
+            return;
+          } catch (Exception ignored) {
+            try {
+              Intent intent = new Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION);
+              startActivity(intent);
+              return;
+            } catch (Exception e2) {}
+          }
+        }
         AlertDialog.Builder dialog = new AlertDialog.Builder(Main.this);
         dialog.setTitle(R.string.app_name);
         dialog.setMessage(R.string.storage_bug);
-        dialog.setPositiveButton(R.string.resolve_manually, (dialog1, which) -> openURL(this, "https://lvonasek.github.io/androidbug.html"));
-        dialog.setNegativeButton(android.R.string.cancel, null);
+        dialog.setPositiveButton(android.R.string.ok, null);
         Dialog d = dialog.create();
         d.getWindow().setBackgroundDrawable(getDrawable(R.drawable.background_dialog));
-        d.setOnDismissListener(dialog12 -> System.exit(0));
         d.show();
       }
     });

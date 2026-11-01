@@ -10,8 +10,11 @@ import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.graphics.drawable.Drawable;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
+import android.os.Environment;
 import android.preference.PreferenceManager;
+import android.provider.Settings;
 import android.text.Html;
 import android.util.Log;
 import android.view.LayoutInflater;
@@ -263,6 +266,21 @@ public class FileManager extends AbstractActivity implements View.OnClickListene
   }
 
   protected void setupPermissions() {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+      if (!Environment.isExternalStorageManager()) {
+        try {
+          Intent intent = new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION);
+          intent.setData(Uri.parse("package:" + getPackageName()));
+          startActivity(intent);
+        } catch (Exception ignored) {
+          try {
+            Intent intent = new Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION);
+            startActivity(intent);
+          } catch (Exception ignored2) {}
+        }
+      }
+    }
+
     String[] permissions = {
             Manifest.permission.CAMERA,
             Manifest.permission.INTERNET

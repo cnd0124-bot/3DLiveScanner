@@ -1,5 +1,6 @@
 #include <cstdio>
 #include <sstream>
+#include <sys/stat.h>
 #include <arcore/service.h>
 #include <exporter/csvposes.h>
 #include <exporter/floorpln.h>
@@ -47,13 +48,16 @@ namespace oc {
         ar->SetResolution((float)fabs(res));
         reconstruction.Setup(res, dmin, dmax, noise, holesFilling, poseCorrection, distortion, clearing, dataset_path);
 
+        mkdir(reconstruction.dataset->GetPath().c_str(), 0777);
         std::string access = reconstruction.dataset->GetPath() + "/test.txt";
         FILE* file = fopen(access.c_str(), "w");
         if (file) {
             fclose(file);
+            remove(access.c_str());
             return true;
         } else {
-            return false;
+            LOGI("Cannot write test.txt to %s, but proceeding with AR", access.c_str());
+            return true;
         }
     }
 

@@ -10,6 +10,7 @@ import android.content.pm.ResolveInfo;
 import android.content.res.Resources;
 import android.graphics.Color;
 import android.net.Uri;
+import android.os.Bundle;
 import android.os.Environment;
 import android.os.Parcelable;
 import android.preference.PreferenceManager;
@@ -217,6 +218,33 @@ public abstract class AbstractActivity extends Activity {
     activity.setRequestedOrientation(value);
   }
 
+  private static Context sContext = null;
+
+  @Override
+  protected void onCreate(Bundle savedInstanceState) {
+    super.onCreate(savedInstanceState);
+    sContext = getApplicationContext();
+  }
+
+  public static boolean isWritableDir(File dir) {
+    if (dir == null) return false;
+    try {
+      if (!dir.exists()) {
+        dir.mkdirs();
+      }
+      if (!dir.exists() || !dir.isDirectory()) {
+        return false;
+      }
+      File test = new File(dir, ".test_rw");
+      if (test.createNewFile()) {
+        test.delete();
+        return true;
+      }
+    } catch (Exception ignored) {
+    }
+    return false;
+  }
+
   @Override
   protected void onPause() {
     mCompass.onPause();
@@ -306,36 +334,64 @@ public abstract class AbstractActivity extends Activity {
     String olddir = Environment.getExternalStorageDirectory().getPath() + OLD_MODEL_DIRECTORY;
     String newdir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS).getPath() + OLD_MODEL_DIRECTORY;
     String dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS).getPath() + NEW_MODEL_DIRECTORY;
+    File publicDir = new File(dir);
 
-    if (new File(dir).mkdir())
-      Log.d(TAG, "Directory " + dir + " created");
-    try {
-      if (new File(new File(dir), ".nomedia").createNewFile())
-        Log.d(TAG, ".nomedia in  " + dir + " created");
-    } catch (Exception e) {
-      e.printStackTrace();
-    }
+    if (isWritableDir(publicDir)) {
+      try {
+        if (new File(publicDir, ".nomedia").createNewFile())
+          Log.d(TAG, ".nomedia in " + dir + " created");
+      } catch (Exception ignored) {}
 
-    if (migrate) {
-      synchronized (migrationActive) {
-        migrationActive.set(true);
-      }
-      migrate(olddir, dir);
-      migrate(newdir, dir);
-      synchronized (migrationActive) {
-        migrationActive.set(false);
-        if (restartApp.get()) {
-          System.exit(0);
+      if (migrate) {
+        synchronized (migrationActive) {
+          migrationActive.set(true);
+        }
+        migrate(olddir, dir);
+        migrate(newdir, dir);
+        synchronized (migrationActive) {
+          migrationActive.set(false);
+          if (restartApp.get()) {
+            System.exit(0);
+          }
         }
       }
+      return dir;
     }
+
+    Context ctx = sContext != null ? sContext : ScannerApp.getInstance();
+    if (ctx != null) {
+      File appDir = new File(ctx.getExternalFilesDir(null), "3D Live Scanner");
+      if (isWritableDir(appDir)) {
+        return appDir.getAbsolutePath();
+      }
+      File intDir = new File(ctx.getFilesDir(), "3D Live Scanner");
+      intDir.mkdirs();
+      return intDir.getAbsolutePath();
+    }
+
     return dir;
   }
 
   public static File getTempPath() {
     File dir = new File(getPath(false), TEMP_DIRECTORY);
-    if (dir.mkdir())
-      Log.d(TAG, "Directory " + dir + " created");
+    if (!dir.exists()) {
+      dir.mkdirs();
+    }
+    if (isWritableDir(dir)) {
+      return dir;
+    }
+
+    Context ctx = sContext != null ? sContext : ScannerApp.getInstance();
+    if (ctx != null) {
+      File appTemp = new File(ctx.getExternalFilesDir(null), TEMP_DIRECTORY);
+      appTemp.mkdirs();
+      if (isWritableDir(appTemp)) {
+        return appTemp;
+      }
+      File cacheTemp = new File(ctx.getCacheDir(), TEMP_DIRECTORY);
+      cacheTemp.mkdirs();
+      return cacheTemp;
+    }
     return dir;
   }
 
