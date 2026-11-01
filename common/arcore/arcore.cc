@@ -18,28 +18,42 @@ namespace oc {
                 ArSession_create(env, context, &ar_session_);
             }
 
+            int rawSupported = 0;
+            int autoSupported = 0;
+            ArSession_isDepthModeSupported(ar_session_, AR_DEPTH_MODE_RAW_DEPTH_ONLY, &rawSupported);
+            ArSession_isDepthModeSupported(ar_session_, AR_DEPTH_MODE_AUTOMATIC, &autoSupported);
+
             ArConfig *ar_config = nullptr;
             ArConfig_create(ar_session_, &ar_config);
-            ArConfig_setFocusMode(ar_session_, ar_config, AR_FOCUS_MODE_FIXED);
-            ArConfig_setPlaneFindingMode(ar_session_, ar_config, AR_PLANE_FINDING_MODE_DISABLED);
-            if (faceMode)
+            ArConfig_setFocusMode(ar_session_, ar_config, AR_FOCUS_MODE_AUTO);
+            ArConfig_setPlaneFindingMode(ar_session_, ar_config, AR_PLANE_FINDING_MODE_HORIZONTAL_AND_VERTICAL);
+            if (faceMode) {
                 ArConfig_setAugmentedFaceMode(ar_session_, ar_config, AR_AUGMENTED_FACE_MODE_MESH3D);
-            else {
-                useDepthRaw = true;
-                if (depthCamera) {
+                useDepth = false;
+                useDepthRaw = false;
+            } else {
+                if (depthCamera && rawSupported) {
                     ArConfig_setDepthMode(ar_session_, ar_config, AR_DEPTH_MODE_RAW_DEPTH_ONLY);
+                    useDepth = true;
+                    useDepthRaw = true;
+                } else if (autoSupported) {
+                    ArConfig_setDepthMode(ar_session_, ar_config, AR_DEPTH_MODE_AUTOMATIC);
+                    useDepth = true;
+                    useDepthRaw = false;
+                } else if (rawSupported) {
+                    ArConfig_setDepthMode(ar_session_, ar_config, AR_DEPTH_MODE_RAW_DEPTH_ONLY);
+                    useDepth = true;
+                    useDepthRaw = true;
                 } else {
-                    ArConfig_setDepthMode(ar_session_, ar_config, AR_DEPTH_MODE_ALWAYS_ENABLED);
+                    ArConfig_setDepthMode(ar_session_, ar_config, AR_DEPTH_MODE_DISABLED);
+                    useDepth = false;
+                    useDepthRaw = false;
                 }
             }
             ArConfig_setUpdateMode(ar_session_, ar_config, AR_UPDATE_MODE_BLOCKING);
             ArSession_configure(ar_session_, ar_config);
             ArConfig_destroy(ar_config);
             ArFrame_create(ar_session_, &ar_frame_);
-
-            int out_is_supported = 0;
-            ArSession_isDepthModeSupported(ar_session_, AR_DEPTH_MODE_ALWAYS_ENABLED, &out_is_supported);
-            useDepth = (out_is_supported != 0) || depthCamera;
         } else
 #endif
         {
@@ -95,9 +109,17 @@ namespace oc {
         ar_session_ = static_cast<ArSession *>(session);
         ar_frame_ = static_cast<ArFrame *>(frame);
 
-        int out_is_supported = 0;
-        ArSession_isDepthModeSupported(ar_session_, AR_DEPTH_MODE_AUTOMATIC, &out_is_supported);
-        useDepth = (out_is_supported != 0) || useDepth;
+        int rawSupported = 0;
+        int autoSupported = 0;
+        ArSession_isDepthModeSupported(ar_session_, AR_DEPTH_MODE_RAW_DEPTH_ONLY, &rawSupported);
+        ArSession_isDepthModeSupported(ar_session_, AR_DEPTH_MODE_AUTOMATIC, &autoSupported);
+        if (rawSupported) {
+            useDepth = true;
+            useDepthRaw = true;
+        } else if (autoSupported) {
+            useDepth = true;
+            useDepthRaw = false;
+        }
     }
 
     float ARCore::CountFrameError() {
@@ -573,11 +595,9 @@ namespace oc {
     }
 
     void ARCore::UpdateFeaturePoints() {
-        if (!UpdateAnchor()) {
-            points.clear();
-            return;
-        }
+        UpdateAnchor();
 
+        std::vector<glm::vec4> feature_points;
         ArPointCloud *ar_point_cloud = nullptr;
         ArStatus point_cloud_status = ArFrame_acquirePointCloud(ar_session_, ar_frame_, &ar_point_cloud);
         int32_t number_of_points = 0;
@@ -587,28 +607,26 @@ namespace oc {
             const float *point_cloud_data;
             ArPointCloud_getData(ar_session_, ar_point_cloud, &point_cloud_data);
 
-            if (number_of_points > 0)
-                points.clear();
             for (int i = 0; i < number_of_points * 4; i += 4) {
-                points.push_back(glm::vec4(point_cloud_data[i + 0], point_cloud_data[i + 1],
+                feature_points.push_back(glm::vec4(point_cloud_data[i + 0], point_cloud_data[i + 1],
                                            point_cloud_data[i + 2], point_cloud_data[i + 3]));
             }
             ArPointCloud_release(ar_point_cloud);
         }
 
+        std::vector<glm::vec4> depth_points;
         if (useDepth) {
-            points.clear();
             camera.InitARCore(ar_session_, ar_frame_);
-            if (number_of_points > 0) {
 
-                ArImage* image = 0;
-                int result = 0;
-                if (useDepthRaw) {
-                    result = ArFrame_acquireRawDepthImage(ar_session_, ar_frame_, &image);
-                } else {
-                    result = ArFrame_acquireDepthImage(ar_session_, ar_frame_, &image);
-                }
-                if (result == AR_SUCCESS) {
+            ArImage* image = 0;
+            int result = -1;
+            if (useDepthRaw) {
+                result = ArFrame_acquireRawDepthImage(ar_session_, ar_frame_, &image);
+            }
+            if (result != AR_SUCCESS) {
+                result = ArFrame_acquireDepthImage(ar_session_, ar_frame_, &image);
+            }
+            if (result == AR_SUCCESS) {
 
                     uint8_t* confidenceData;
                     ArImage* confidenceImage = 0;
@@ -752,11 +770,11 @@ namespace oc {
                                 }
 
                                 //add point into output
-                                if (depth > 0.05) {
+                                if (depth > 0.15f && depth < 6.0f) {
                                     depth -= offset;
                                     glm::vec4 p = ToPoint(screen2world, len, depthWidth, depthHeight, x, y, depth);
                                     if (maxY < p.y) maxY = p.y;
-                                    points.emplace_back(p);
+                                    depth_points.emplace_back(p);
 
                                     if (!has_depth_sensor) {
                                         int dir = (int)glm::degrees(atan2(p.y - cam.y, p.x - cam.x));
@@ -814,9 +832,9 @@ namespace oc {
                                         key.first = dir;
                                         key.second = (int)(r.y * 10);
                                         if (distancesLocal.find(key) == distancesLocal.end()) {
-                                            points.emplace_back(r, 1.0f);
+                                            depth_points.emplace_back(r, 1.0f);
                                         } else if (distancesLocal[key] + maxErrorWalls > dst) {
-                                            points.emplace_back(r, 1.0f);
+                                            depth_points.emplace_back(r, 1.0f);
                                         }
                                     }
                                 }
@@ -835,6 +853,12 @@ namespace oc {
                     lastDepthTimestamp = timestamp;
                 }
             }
+        }
+
+        if (!depth_points.empty()) {
+            points = depth_points;
+        } else {
+            points = feature_points;
         }
         has_coordinate_system_ = true;
     }

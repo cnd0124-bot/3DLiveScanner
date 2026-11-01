@@ -141,7 +141,11 @@ class FileAdapter extends BaseAdapter
     }
     for (String ext : Exporter.FILE_EXT) {
       if (key.endsWith(ext)) {
-        icon.setImageDrawable(mContext.getDrawable(R.drawable.ic_model_icon));
+        if (key.endsWith(Exporter.EXT_DXF)) {
+          icon.setImageDrawable(mContext.getDrawable(R.drawable.ic_type_floorplan));
+        } else {
+          icon.setImageDrawable(mContext.getDrawable(R.drawable.ic_model_icon));
+        }
         hasExtension = true;
         break;
       }
@@ -180,6 +184,21 @@ class FileAdapter extends BaseAdapter
         mContext.refreshUI();
       } else if (key.endsWith(Exporter.EXT_DATASET)) {
         startPostprocess(key);
+      } else if (key.endsWith(Exporter.EXT_DXF)) {
+        File f = new File(getPath(), key);
+        try {
+          Intent intent = new Intent(Intent.ACTION_VIEW);
+          Uri uri = FileProvider.getUriForFile(mContext, BuildConfig.APPLICATION_ID + ".provider", f);
+          intent.setDataAndType(uri, "application/dxf");
+          intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+          mContext.startActivity(Intent.createChooser(intent, key));
+        } catch (Exception e) {
+          Intent shareIntent = new Intent(Intent.ACTION_SEND);
+          shareIntent.setType("application/dxf");
+          shareIntent.putExtra(Intent.EXTRA_STREAM, FileProvider.getUriForFile(mContext, BuildConfig.APPLICATION_ID + ".provider", f));
+          shareIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+          mContext.startActivity(Intent.createChooser(shareIntent, key));
+        }
       } else {
         File f = new File(getPath(), key);
         Intent intent = new Intent(mContext, Main.class);
@@ -358,7 +377,7 @@ class FileAdapter extends BaseAdapter
           continue;
         }
         File f = new File(getPath(), s);
-        if (f.isDirectory()) {
+        if (f.isDirectory() || s.endsWith(Exporter.EXT_DXF)) {
           if (f.getAbsolutePath().compareTo(mContext.getTempPath().getAbsolutePath()) != 0) {
             if (s.startsWith("20")) {
               data.add(0, s);
@@ -424,6 +443,13 @@ class FileAdapter extends BaseAdapter
     String key = (String)getItem(mSelected.get(0));
     if (key.length() <= 4) {
       Toast.makeText(mContext, R.string.invalid_name, Toast.LENGTH_LONG).show();
+    } else if (key.endsWith(Exporter.EXT_DXF)) {
+      File file = new File(getPath(), key);
+      Intent intent = new Intent(Intent.ACTION_SEND);
+      intent.setType("application/dxf");
+      intent.putExtra(Intent.EXTRA_STREAM, FileProvider.getUriForFile(mContext, BuildConfig.APPLICATION_ID + ".provider", file));
+      intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+      mContext.startActivity(Intent.createChooser(intent, mContext.getString(R.string.share_via)));
     } else if ((key.endsWith(Exporter.EXT_DATASET)) || (key.endsWith(Exporter.EXT_PLY))) {
       mContext.showProgress();
       new Thread(() -> {
@@ -461,7 +487,25 @@ class FileAdapter extends BaseAdapter
               case 2: //sketchfab
                 intent = new Intent(mContext, OAuth.class);
                 intent.putExtra(AbstractActivity.FILE_KEY, zip);
-                mContext.startActivity(intent);
+                intent.startActivity(intent);
+                break;
+              case 3: //2D CAD(DXF) export
+                new Thread(() -> {
+                  String baseName = key;
+                  if (baseName.lastIndexOf('.') > 0)
+                    baseName = baseName.substring(0, baseName.lastIndexOf('.'));
+                  File targetDxf = new File(getPath(), baseName + Exporter.EXT_DXF);
+                  boolean ok = Exporter.convertObjToDxf(file, targetDxf);
+                  mContext.runOnUiThread(() -> {
+                    mContext.showProgress();
+                    if (ok) {
+                      Toast.makeText(mContext, String.format(mContext.getString(R.string.dxf_saved), targetDxf.getName()), Toast.LENGTH_LONG).show();
+                    } else {
+                      Toast.makeText(mContext, R.string.failed, Toast.LENGTH_SHORT).show();
+                    }
+                    mContext.refreshUI();
+                  });
+                }).start();
                 break;
             }
             mContext.refreshUI();

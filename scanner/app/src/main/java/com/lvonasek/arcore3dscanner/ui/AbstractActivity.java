@@ -327,6 +327,9 @@ public abstract class AbstractActivity extends Activity {
         return folder;
       }
     }
+    if (folder.getAbsolutePath().endsWith(Exporter.EXT_DXF)) {
+      return folder;
+    }
     return null;
   }
 

@@ -1,4 +1,5 @@
 #include <fstream>
+#include <climits>
 #include <data/file3d.h>
 #include <exporter/floorpln.h>
 
@@ -148,39 +149,90 @@ void ExporterFloorplan::Export(std::string output)
     model.push_back(mesh);
     File3d(output + "floorplan.obj", true).WriteModel(model);
 
-    // Export 2D CAD Vector (DXF format)
+    // Export 2D CAD Vector (DXF format with Metric units and Collinear Line Merging)
     std::ofstream dxf(output + "floorplan.dxf");
     if (dxf.is_open())
     {
-        dxf << "0\nSECTION\n2\nENTITIES\n";
-        for (p.x = min.x; p.x < max.x; p.x++)
-        {
-            for (p.z = min.z; p.z < max.z; p.z++)
-            {
-                if (heightmap.find(p) != heightmap.end())
-                {
-                    FloorPlanPoint right;
-                    right.x = p.x + 1;
-                    right.z = p.z;
-                    FloorPlanPoint down;
-                    down.x = p.x;
-                    down.z = p.z + 1;
+        // DXF Header (AutoCAD 2000, Metric meters)
+        dxf << "0\nSECTION\n2\nHEADER\n";
+        dxf << "9\n$ACADVER\n1\nAC1015\n";
+        dxf << "9\n$INSUNITS\n70\n6\n";
+        dxf << "0\nENDSEC\n";
 
-                    if (heightmap.find(right) == heightmap.end())
-                    {
-                        dxf << "0\nLINE\n8\nWALLS\n";
-                        dxf << "10\n" << (p.x + 1) << "\n20\n" << (p.z) << "\n30\n0.0\n";
-                        dxf << "11\n" << (p.x + 1) << "\n21\n" << (p.z + 1) << "\n31\n0.0\n";
+        dxf << "0\nSECTION\n2\nTABLES\n";
+        dxf << "0\nTABLE\n2\nLAYER\n70\n1\n";
+        dxf << "0\nLAYER\n2\nWALLS\n70\n0\n62\n7\n6\nCONTINUOUS\n0\nENDTAB\n";
+        dxf << "0\nENDSEC\n";
+
+        dxf << "0\nSECTION\n2\nENTITIES\n";
+
+        auto hasCell = [this](int x, int z) -> bool {
+            FloorPlanPoint pt;
+            pt.x = x;
+            pt.z = z;
+            return heightmap.find(pt) != heightmap.end();
+        };
+
+        // 1. Horizontal wall segments: scan each z and merge contiguous runs along x
+        for (int z = min.z; z <= max.z + 1; z++)
+        {
+            int runStart = INT_MIN;
+            for (int x = min.x; x <= max.x + 1; x++)
+            {
+                bool insideCurrent = hasCell(x, z);
+                bool insidePrev = hasCell(x, z - 1);
+                bool isBoundary = (insideCurrent != insidePrev);
+
+                if (isBoundary) {
+                    if (runStart == INT_MIN) {
+                        runStart = x;
                     }
-                    if (heightmap.find(down) == heightmap.end())
-                    {
+                } else {
+                    if (runStart != INT_MIN) {
                         dxf << "0\nLINE\n8\nWALLS\n";
-                        dxf << "10\n" << (p.x) << "\n20\n" << (p.z + 1) << "\n30\n0.0\n";
-                        dxf << "11\n" << (p.x + 1) << "\n21\n" << (p.z + 1) << "\n31\n0.0\n";
+                        dxf << "10\n" << (runStart * 0.01f) << "\n20\n" << (z * 0.01f) << "\n30\n0.0\n";
+                        dxf << "11\n" << (x * 0.01f) << "\n21\n" << (z * 0.01f) << "\n31\n0.0\n";
+                        runStart = INT_MIN;
                     }
                 }
             }
+            if (runStart != INT_MIN) {
+                dxf << "0\nLINE\n8\nWALLS\n";
+                dxf << "10\n" << (runStart * 0.01f) << "\n20\n" << (z * 0.01f) << "\n30\n0.0\n";
+                dxf << "11\n" << ((max.x + 1) * 0.01f) << "\n21\n" << (z * 0.01f) << "\n31\n0.0\n";
+            }
         }
+
+        // 2. Vertical wall segments: scan each x and merge contiguous runs along z
+        for (int x = min.x; x <= max.x + 1; x++)
+        {
+            int runStart = INT_MIN;
+            for (int z = min.z; z <= max.z + 1; z++)
+            {
+                bool insideCurrent = hasCell(x, z);
+                bool insidePrev = hasCell(x - 1, z);
+                bool isBoundary = (insideCurrent != insidePrev);
+
+                if (isBoundary) {
+                    if (runStart == INT_MIN) {
+                        runStart = z;
+                    }
+                } else {
+                    if (runStart != INT_MIN) {
+                        dxf << "0\nLINE\n8\nWALLS\n";
+                        dxf << "10\n" << (x * 0.01f) << "\n20\n" << (runStart * 0.01f) << "\n30\n0.0\n";
+                        dxf << "11\n" << (x * 0.01f) << "\n21\n" << (z * 0.01f) << "\n31\n0.0\n";
+                        runStart = INT_MIN;
+                    }
+                }
+            }
+            if (runStart != INT_MIN) {
+                dxf << "0\nLINE\n8\nWALLS\n";
+                dxf << "10\n" << (x * 0.01f) << "\n20\n" << (runStart * 0.01f) << "\n30\n0.0\n";
+                dxf << "11\n" << (x * 0.01f) << "\n21\n" << ((max.z + 1) * 0.01f) << "\n31\n0.0\n";
+            }
+        }
+
         dxf << "0\nENDSEC\n0\nEOF\n";
         dxf.close();
     }

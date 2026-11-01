@@ -177,7 +177,9 @@
         <item>Android 공유</item>
         <item>온라인 변환기</item>
         <item>Sketchfab</item>
+        <item>2D CAD(DXF) 도면으로 변환</item>
     </string-array>
+    <string name="dxf_saved">2D CAD(DXF) 도면 저장 완료: %s</string>
 
     <string-array name="empty">
     </string-array>
