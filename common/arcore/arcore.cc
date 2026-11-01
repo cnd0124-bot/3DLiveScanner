@@ -5,17 +5,25 @@
 namespace oc {
 
     ARCore::ARCore(void *env, void *context, bool faceMode, bool depthCamera) {
+        ar_session_ = nullptr;
+        ar_frame_ = nullptr;
         useDepthRaw = false;
 #ifndef ARCORE_BACKPORT
         if (env && context) {
+            ArStatus status = AR_ERROR_FATAL;
             if (faceMode) {
                 ArSessionFeature features[2] = {AR_SESSION_FEATURE_FRONT_CAMERA, AR_SESSION_FEATURE_END_OF_LIST};
-                ArSession_createWithFeatures(env, context, features, &ar_session_);
+                status = ArSession_createWithFeatures(env, context, features, &ar_session_);
             } else if (!depthCamera) {
                 ArSessionFeature features[2] = {AR_SESSION_FEATURE_DO_NOT_USE_ACTIVE_DEPTH_SENSOR, AR_SESSION_FEATURE_END_OF_LIST};
-                ArSession_createWithFeatures(env, context, features, &ar_session_);
-            } else {
-                ArSession_create(env, context, &ar_session_);
+                status = ArSession_createWithFeatures(env, context, features, &ar_session_);
+            }
+            if (status != AR_SUCCESS || !ar_session_) {
+                status = ArSession_create(env, context, &ar_session_);
+            }
+            if (status != AR_SUCCESS || !ar_session_) {
+                LOGI("ARCore ArSession_create failed: %d", status);
+                return;
             }
 
             int rawSupported = 0;
@@ -59,7 +67,16 @@ namespace oc {
                 }
             }
             ArConfig_setUpdateMode(ar_session_, ar_config, AR_UPDATE_MODE_BLOCKING);
-            ArSession_configure(ar_session_, ar_config);
+            ArStatus configStatus = ArSession_configure(ar_session_, ar_config);
+            if (configStatus != AR_SUCCESS) {
+                LOGI("ArSession_configure failed: %d, trying fallback config", configStatus);
+                ArConfig_setFocusMode(ar_session_, ar_config, AR_FOCUS_MODE_FIXED);
+                ArConfig_setDepthMode(ar_session_, ar_config, AR_DEPTH_MODE_DISABLED);
+                useDepth = false;
+                useDepthRaw = false;
+                configStatus = ArSession_configure(ar_session_, ar_config);
+                LOGI("Fallback ArSession_configure status: %d", configStatus);
+            }
             ArConfig_destroy(ar_config);
             ArFrame_create(ar_session_, &ar_frame_);
         } else
@@ -79,18 +96,27 @@ namespace oc {
     }
 
     ARCore::~ARCore() {
-        ArSession_destroy(ar_session_);
-        ArFrame_destroy(ar_frame_);
+        if (ar_session_) {
+            ArSession_destroy(ar_session_);
+            ar_session_ = nullptr;
+        }
+        if (ar_frame_) {
+            ArFrame_destroy(ar_frame_);
+            ar_frame_ = nullptr;
+        }
     }
 
     void ARCore::Clear(bool detach) {
+        if (!ar_session_) return;
         if (detach) {
             for (auto& anchor : ar_anchor_list) {
                 ArAnchor_detach(ar_session_, ar_anchor_list[anchor.first]);
                 ArAnchor_release(ar_anchor_list[anchor.first]);
             }
-            ArAnchor_detach(ar_session_, ar_zero_.second);
-            ArAnchor_release(ar_zero_.second);
+            if (ar_zero_.second) {
+                ArAnchor_detach(ar_session_, ar_zero_.second);
+                ArAnchor_release(ar_zero_.second);
+            }
         }
         ar_anchor_list.clear();
         ar_zero_.second = 0;
@@ -98,11 +124,11 @@ namespace oc {
     }
 
     void ARCore::OnPause() {
-        ArSession_pause(ar_session_);
+        if (ar_session_) ArSession_pause(ar_session_);
     }
 
     void ARCore::OnResume() {
-        ArSession_resume(ar_session_);
+        if (ar_session_) ArSession_resume(ar_session_);
         camera.InitializeGlContent();
         texture_initialized_ = false;
     }
@@ -110,7 +136,7 @@ namespace oc {
     void ARCore::OnDisplayGeometryChanged(int display_rotation, int width, int height) {
         viewportWidth = width;
         viewportHeight = height;
-        ArSession_setDisplayGeometry(ar_session_, display_rotation, width, height);
+        if (ar_session_) ArSession_setDisplayGeometry(ar_session_, display_rotation, width, height);
     }
 
     void ARCore::Configure(void *session, void *frame) {
@@ -165,6 +191,7 @@ namespace oc {
     }
 
     bool ARCore::Process(bool update) {
+        if (!ar_session_ || !ar_frame_) return false;
         if (update) {
             if (!texture_initialized_) {
                 ArSession_setCameraTextureName(ar_session_, camera.GetTextureName());
@@ -420,6 +447,7 @@ namespace oc {
     }
 
     bool ARCore::UpdateAnchor() {
+        if (!ar_session_ || !ar_frame_) return false;
         if (!ar_anchor_list.empty() && GetActiveAnchors().empty()) {
             return false;
         }
@@ -606,6 +634,7 @@ namespace oc {
     }
 
     void ARCore::UpdateFeaturePoints() {
+        if (!ar_session_ || !ar_frame_) return;
         UpdateAnchor();
 
         std::vector<glm::vec4> feature_points;

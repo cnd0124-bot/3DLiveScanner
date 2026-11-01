@@ -36,6 +36,20 @@ namespace oc {
 
         enum NightVisionScheme {WHITE2RED, WHITE2BLUE, GREEN, BW};
 
+        ARCoreCamera() : shader_program_(nullptr), texture_id_(0), attribute_vertices_(0), attribute_uvs_(0),
+                         minX(0), minY(0), maxX(0), maxY(0), aabb_initialized_(false), uvs_initialized_(false),
+                         scheme(WHITE2RED) {}
+        ~ARCoreCamera() {
+            if (shader_program_) {
+                delete shader_program_;
+                shader_program_ = nullptr;
+            }
+            if (texture_id_ != 0) {
+                glDeleteTextures(1, &texture_id_);
+                texture_id_ = 0;
+            }
+        }
+
         void InitializeGlContent();
 
         unsigned char Convert(int depth, int index);

@@ -106,12 +106,22 @@ public class Compatibility {
         return false;
     }
 
+    private static Boolean sGoogleDepthSupported = null;
     public static boolean isGoogleDepthSupported(Activity activity) {
+        if (sGoogleDepthSupported != null) {
+            return sGoogleDepthSupported;
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            sGoogleDepthSupported = true;
+            return true;
+        }
         Session session = null;
         try {
             session = new Session(activity);
-            return session.isDepthModeSupported(Config.DepthMode.RAW_DEPTH_ONLY) ||
-                   session.isDepthModeSupported(Config.DepthMode.AUTOMATIC);
+            boolean supported = session.isDepthModeSupported(Config.DepthMode.RAW_DEPTH_ONLY) ||
+                                session.isDepthModeSupported(Config.DepthMode.AUTOMATIC);
+            sGoogleDepthSupported = supported;
+            return supported;
         } catch (Exception e) {
             e.printStackTrace();
         } finally {
@@ -121,15 +131,25 @@ public class Compatibility {
                 } catch (Exception ignored) {}
             }
         }
+        sGoogleDepthSupported = false;
         return false;
     }
 
+    private static Boolean sGoogleToFSupported = null;
     public static boolean isGoogleToFSupported(Activity activity) {
+        if (sGoogleToFSupported != null) {
+            return sGoogleToFSupported;
+        }
+        if (!hasToFSensor(activity)) {
+            sGoogleToFSupported = false;
+            return false;
+        }
         Session session = null;
         try {
             session = new Session(activity);
             for (CameraConfig config : session.getSupportedCameraConfigs()) {
                 if (config.getDepthSensorUsage() == CameraConfig.DepthSensorUsage.REQUIRE_AND_USE) {
+                    sGoogleToFSupported = true;
                     return true;
                 }
             }
@@ -142,6 +162,7 @@ public class Compatibility {
                 } catch (Exception ignored) {}
             }
         }
+        sGoogleToFSupported = false;
         return false;
     }
 

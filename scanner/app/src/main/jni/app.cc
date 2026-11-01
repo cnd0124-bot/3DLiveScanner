@@ -43,6 +43,10 @@ namespace oc {
                                    bool distortion, bool offset, bool flashlight, int mode,
                                    bool clearing, std::string dataset_path) {
 
+        if (ar) {
+            delete ar;
+            ar = nullptr;
+        }
         ar = new ARCoreService(env, context, (ARCoreService::Mode)mode, flashlight);
         ar->SetOffset(offset ? (float) fabs(res) : 0);
         ar->SetResolution((float)fabs(res));

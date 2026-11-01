@@ -72,17 +72,21 @@ namespace oc {
     }  // namespace
 
     void ARCoreCamera::InitializeGlContent() {
-        std::string ext = "#extension GL_OES_EGL_image_external : require\n";
-        std::string uniform = "uniform samplerExternalOES texture;\n";
-        shader_program_ = new GLSL(kVertexShader, uniform + kFragmentShader, ext);
+        if (!shader_program_) {
+            std::string ext = "#extension GL_OES_EGL_image_external : require\n";
+            std::string uniform = "uniform samplerExternalOES texture;\n";
+            shader_program_ = new GLSL(kVertexShader, uniform + kFragmentShader, ext);
+            attribute_vertices_ = glGetAttribLocation(shader_program_->GetId(), "vertex");
+            attribute_uvs_ = glGetAttribLocation(shader_program_->GetId(), "textureCoords");
+        }
 
-        GLenum target = GL_TEXTURE_EXTERNAL_OES;
-        glGenTextures(1, &texture_id_);
-        glBindTexture(target, texture_id_);
-        glTexParameteri(target, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        glTexParameteri(target, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        attribute_vertices_ = glGetAttribLocation(shader_program_->GetId(), "vertex");
-        attribute_uvs_ = glGetAttribLocation(shader_program_->GetId(), "textureCoords");
+        if (texture_id_ == 0) {
+            GLenum target = GL_TEXTURE_EXTERNAL_OES;
+            glGenTextures(1, &texture_id_);
+            glBindTexture(target, texture_id_);
+            glTexParameteri(target, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+            glTexParameteri(target, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        }
     }
 
 
