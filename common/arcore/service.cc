@@ -143,6 +143,13 @@ namespace oc {
         return mode_;
     }
 
+    std::vector<DetectedPlane> ARCoreService::GetPlanes() {
+        if (google) {
+            return google->GetPlanes();
+        }
+        return std::vector<DetectedPlane>();
+    }
+
     std::vector<glm::vec4> ARCoreService::GetPointCloud(float maxDiff) {
         std::vector<glm::vec4> output;
         if (GetPoseDiff() >= maxDiff)

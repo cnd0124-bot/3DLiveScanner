@@ -285,6 +285,85 @@ namespace oc {
         return output;
     }
 
+    std::vector<DetectedPlane> ARCore::GetPlanes() {
+        std::vector<DetectedPlane> result;
+#ifndef ARCORE_BACKPORT
+        if (!ar_session_) return result;
+        ArTrackableList* plane_list = nullptr;
+        ArTrackableList_create(ar_session_, &plane_list);
+        ArSession_getAllTrackables(ar_session_, AR_TRACKABLE_PLANE, plane_list);
+        int32_t plane_list_size = 0;
+        ArTrackableList_getSize(ar_session_, plane_list, &plane_list_size);
+
+        glm::mat4 zero = glm::inverse(GetZeroTransform());
+
+        for (int32_t i = 0; i < plane_list_size; i++) {
+            ArTrackable* trackable = nullptr;
+            ArTrackableList_getItem(ar_session_, plane_list, i, &trackable);
+            ArPlane* ar_plane = ArAsPlane(trackable);
+
+            ArPlane* subsumed_by = nullptr;
+            ArPlane_acquireSubsumedBy(ar_session_, ar_plane, &subsumed_by);
+            if (subsumed_by != nullptr) {
+                ArTrackable_release(ArAsTrackable(subsumed_by));
+                ArTrackable_release(trackable);
+                continue;
+            }
+
+            ArTrackingState tracking_state = AR_TRACKING_STATE_STOPPED;
+            ArTrackable_getTrackingState(ar_session_, trackable, &tracking_state);
+            if (tracking_state != AR_TRACKING_STATE_TRACKING) {
+                ArTrackable_release(trackable);
+                continue;
+            }
+
+            ArPlaneType plane_type;
+            ArPlane_getType(ar_session_, ar_plane, &plane_type);
+
+            float default_pose[7] = {0, 0, 0, 1, 0, 0, 0};
+            ArPose* plane_pose = nullptr;
+            ArPose_create(ar_session_, default_pose, &plane_pose);
+            ArPlane_getCenterPose(ar_session_, ar_plane, plane_pose);
+            glm::mat4 plane_matrix = GetMatrix(plane_pose);
+            ArPose_destroy(plane_pose);
+
+            float extent_x = 0.0f, extent_z = 0.0f;
+            ArPlane_getExtentX(ar_session_, ar_plane, &extent_x);
+            ArPlane_getExtentZ(ar_session_, ar_plane, &extent_z);
+
+            int32_t polygon_size = 0;
+            ArPlane_getPolygonSize(ar_session_, ar_plane, &polygon_size);
+            if (polygon_size < 6) {
+                ArTrackable_release(trackable);
+                continue;
+            }
+
+            std::vector<float> polygon_xz(polygon_size);
+            ArPlane_getPolygon(ar_session_, ar_plane, polygon_xz.data());
+
+            glm::mat4 model_to_zero = zero * plane_matrix;
+            DetectedPlane dp;
+            dp.type = (int)plane_type;
+            glm::vec4 center4 = model_to_zero * glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+            dp.center = glm::vec3(center4 / center4.w);
+            glm::vec4 normal4 = model_to_zero * glm::vec4(0.0f, 1.0f, 0.0f, 0.0f);
+            dp.normal = glm::normalize(glm::vec3(normal4));
+            dp.extentX = extent_x;
+            dp.extentZ = extent_z;
+
+            for (int32_t j = 0; j < polygon_size / 2; j++) {
+                glm::vec4 local_pt(polygon_xz[j * 2 + 0], 0.0f, polygon_xz[j * 2 + 1], 1.0f);
+                glm::vec4 world_pt = model_to_zero * local_pt;
+                dp.polygon.push_back(glm::vec3(world_pt / world_pt.w));
+            }
+            result.push_back(dp);
+            ArTrackable_release(trackable);
+        }
+        ArTrackableList_destroy(plane_list);
+#endif
+        return result;
+    }
+
     std::vector<float> ARCore::GetDistortion() {
         std::vector<float> output;
         for (int i = 0; i < 3; i++) {

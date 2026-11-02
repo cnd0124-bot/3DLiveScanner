@@ -10,6 +10,15 @@
 
 namespace oc {
 
+    struct DetectedPlane {
+        int type; // 0: floor (horizontal up), 1: ceiling (horizontal down), 2: wall (vertical)
+        glm::vec3 center;
+        glm::vec3 normal;
+        std::vector<glm::vec3> polygon;
+        float extentX;
+        float extentZ;
+    };
+
     class ARCore {
     public:
         ARCore(void *env, void *context, bool faceMode, bool depthCamera = false);
@@ -37,6 +46,8 @@ namespace oc {
         glm::vec3 HitTest(int x, int y);
 
         Mesh GetFace(glm::mat4 matrix) { UpdateFace(matrix); return face_mesh; };
+
+        std::vector<DetectedPlane> GetPlanes();
 
         std::vector<glm::vec4> GetPointCloud() { UpdateFeaturePoints(); return points; }
 

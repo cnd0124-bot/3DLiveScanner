@@ -106,6 +106,12 @@ public class Main extends AbstractActivity implements View.OnClickListener,
   boolean mPhotoMode = false;
   boolean mRecording = false;
   float mCameraRecordYaw = 0;
+  private float mLastKeyframeX = Float.NaN;
+  private float mLastKeyframeY = Float.NaN;
+  private float mLastKeyframeZ = Float.NaN;
+  private float mLastKeyframeYaw = Float.NaN;
+  private long mLastKeyframeTime = 0;
+  private int mKeyframeAutoCount = 0;
 
   int getARMode() {
     int mode = getBackend(this) * 3; //0 = GOOGLE_SFM, 3 = HUAWEI_SFM
@@ -561,6 +567,7 @@ public class Main extends AbstractActivity implements View.OnClickListener,
   }
 
   private void pauseScanning() {
+    mLastKeyframeX = Float.NaN;
     if (!mPhotoMode) {
       m3drRunning = false;
       JNI.onToggleButtonClicked(m3drRunning);
@@ -806,6 +813,49 @@ public class Main extends AbstractActivity implements View.OnClickListener,
     }
     if (JNI.didARjump()) {
       Log.d(TAG, "AR tracking jitter detected, continuing scan");
+    }
+
+    if (m3drRunning && !mRecording) {
+      float curX = JNI.getView(0);
+      float curY = JNI.getView(1);
+      float curZ = JNI.getView(2);
+      float curYaw = Compass.getValue();
+      long now = System.currentTimeMillis();
+
+      if (Float.isNaN(mLastKeyframeX)) {
+        mLastKeyframeX = curX;
+        mLastKeyframeY = curY;
+        mLastKeyframeZ = curZ;
+        mLastKeyframeYaw = curYaw;
+        mLastKeyframeTime = now;
+      } else {
+        float dx = curX - mLastKeyframeX;
+        float dy = curY - mLastKeyframeY;
+        float dz = curZ - mLastKeyframeZ;
+        float dist = (float) Math.sqrt(dx * dx + dy * dy + dz * dz);
+        float dYaw = Math.abs(curYaw - mLastKeyframeYaw);
+        if (dYaw > 180.0f) dYaw = 360.0f - dYaw;
+
+        if ((dist >= 0.15f || dYaw >= 15.0f) && (now - mLastKeyframeTime >= 350)) {
+          mLastKeyframeX = curX;
+          mLastKeyframeY = curY;
+          mLastKeyframeZ = curZ;
+          mLastKeyframeYaw = curYaw;
+          mLastKeyframeTime = now;
+          mKeyframeAutoCount++;
+
+          if (mPhotoMode) {
+            JNI.onToggleButtonClicked(true);
+          }
+          if (mToggleButton != null) {
+            mToggleButton.post(() -> {
+              try {
+                mToggleButton.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP);
+              } catch (Exception ignored) {}
+            });
+          }
+        }
+      }
     }
 
     if (mRecording) {

@@ -144,6 +144,14 @@ namespace oc {
                     reconstruction.scene.UpdateFrustum(ar->GetView());
                 pos = reconstruction.scene.renderer->camera.position;
 
+                // RealityScan AR Feature Points
+                std::vector<glm::vec4> current_pts = ar->GetPointCloud(120.0f);
+                reconstruction.scene.UpdateFeaturePoints(current_pts);
+
+                // Matterport Detected Planes (Floor, Walls, Ceiling)
+                std::vector<DetectedPlane> planes = ar->GetPlanes();
+                reconstruction.scene.UpdatePlanes(planes);
+
                 float maxDiff = 120.0f;
                 if (reconstruction.binder_mutex_.try_lock()) {
                     glm::mat4 lastMatrix = reconstruction.frame_calibration * reconstruction.frame_viewmat;
@@ -347,7 +355,7 @@ namespace oc {
     }
 
     bool App::OnDrawScan(glm::vec3 pos, bool zoomable) {
-        bool output = !reconstruction.scene.static_meshes_.empty();
+        bool output = !reconstruction.scene.static_meshes_.empty() || !reconstruction.scene.planes_mesh_.vertices.empty();
         float step = reconstruction.scan.Resolution() * 16.0f;
         float limit = 10000.0f;
         GLSL::CurrentShader()->UniformFloat("u_uniformBegin", limit);
@@ -363,6 +371,13 @@ namespace oc {
                                                       s.second->num_faces * 3, &s.second->faces[0][0]);
                 output = true;
             }
+        }
+        if (!reconstruction.scene.planes_mesh_.vertices.empty()) {
+            reconstruction.scene.renderer->Render(&reconstruction.scene.planes_mesh_.vertices[0].x,
+                                                  &reconstruction.scene.planes_mesh_.normals[0].x, 0,
+                                                  reconstruction.scene.planes_mesh_.colors.data(),
+                                                  reconstruction.scene.planes_mesh_.vertices.size(), 0, GL_TRIANGLES);
+            output = true;
         }
         glEnable(GL_CULL_FACE);
         return output;
@@ -858,6 +873,12 @@ namespace oc {
     int App::GetScanSize() {
         reconstruction.render_mutex_.lock();
         int size = reconstruction.scan.Data().size();
+        if (!reconstruction.scene.planes_mesh_.vertices.empty()) {
+            size += reconstruction.scene.planes_mesh_.vertices.size() / 3;
+        }
+        if (reconstruction.dataset) {
+            size += reconstruction.texturize.GetLatestIndex(reconstruction.dataset) + 1;
+        }
         reconstruction.render_mutex_.unlock();
         return size;
     }

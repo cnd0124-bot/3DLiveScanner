@@ -147,6 +147,20 @@ namespace oc {
             if(!anchors_.vertices.empty() && frustum)
                 renderer->Render(&anchors_.vertices[0].x, &anchors_.vertices[0].x, 0, anchors_.colors.data(),
                                  anchors_.indices.size(), anchors_.indices.data());
+            if(!planes_mesh_.vertices.empty()) {
+                glEnable(GL_BLEND);
+                glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+                glDisable(GL_CULL_FACE);
+                renderer->Render(&planes_mesh_.vertices[0].x, &planes_mesh_.normals[0].x, 0,
+                                 planes_mesh_.colors.data(), planes_mesh_.vertices.size(), 0, GL_TRIANGLES);
+                glEnable(GL_CULL_FACE);
+                glDisable(GL_BLEND);
+            }
+            if(!feature_points_mesh_.vertices.empty()) {
+                glPointSize(7.0f);
+                renderer->Render(&feature_points_mesh_.vertices[0].x, &feature_points_mesh_.vertices[0].x, 0,
+                                 feature_points_mesh_.colors.data(), feature_points_mesh_.vertices.size(), 0, GL_POINTS);
+            }
             if(!frustum_.vertices.empty() && frustum) {
                 glEnable(GL_BLEND);
                 glBlendFunc(GL_SRC_ALPHA, GL_DST_ALPHA);
@@ -278,6 +292,60 @@ namespace oc {
                 dy = glm::normalize(dy - c);
                 frustum_.vertices.emplace_back(c + dx * 0.036f + dy * 0.08f);
             }
+        }
+    }
+
+    void Scene::UpdatePlanes(const std::vector<DetectedPlane>& planes) {
+        planes_mesh_.vertices.clear();
+        planes_mesh_.normals.clear();
+        planes_mesh_.colors.clear();
+
+        for (const auto& plane : planes) {
+            if (plane.polygon.size() < 3) continue;
+
+            // Colors:
+            // Type 0 (Floor / Horizontal Up): Matterport Emerald Green (0x8000E676)
+            // Type 2 (Wall / Vertical): Matterport Dodger Blue (0x8000B0FF)
+            // Type 1 (Ceiling): Soft Purple (0x609C27B0)
+            unsigned int fillColor = 0x8000B0FF; // Wall default
+            if (plane.type == 0) fillColor = 0x8000E676; // Floor
+            else if (plane.type == 1) fillColor = 0x609C27B0; // Ceiling
+
+            // Triangulate convex polygon as fan from polygon[0]
+            for (size_t i = 1; i + 1 < plane.polygon.size(); i++) {
+                planes_mesh_.vertices.push_back(plane.polygon[0]);
+                planes_mesh_.vertices.push_back(plane.polygon[i]);
+                planes_mesh_.vertices.push_back(plane.polygon[i + 1]);
+
+                planes_mesh_.normals.push_back(plane.normal);
+                planes_mesh_.normals.push_back(plane.normal);
+                planes_mesh_.normals.push_back(plane.normal);
+
+                planes_mesh_.colors.push_back(fillColor);
+                planes_mesh_.colors.push_back(fillColor);
+                planes_mesh_.colors.push_back(fillColor);
+            }
+        }
+    }
+
+    void Scene::UpdateFeaturePoints(const std::vector<glm::vec4>& points) {
+        feature_points_mesh_.vertices.clear();
+        feature_points_mesh_.colors.clear();
+
+        size_t count = glm::min((size_t)points.size(), (size_t)2500);
+        for (size_t i = 0; i < count; i++) {
+            const auto& pt = points[i];
+            feature_points_mesh_.vertices.push_back(glm::vec3(pt.x, pt.y, pt.z));
+
+            // RealityScan-style confidence shading:
+            // pt.w is confidence (0.0 to 1.0)
+            // High confidence (>0.7): Bright Green (0xFF00FF66)
+            // Medium confidence (>0.4): Bright Cyan (0xFF00E5FF)
+            // Lower confidence: Amber Yellow (0xFFFFD600)
+            unsigned int c = 0xFF00FF66;
+            if (pt.w < 0.4f) c = 0xFFFFD600;
+            else if (pt.w < 0.7f) c = 0xFF00E5FF;
+            feature_points_mesh_.colors.push_back(c);
         }
     }
 

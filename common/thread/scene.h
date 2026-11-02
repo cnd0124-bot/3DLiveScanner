@@ -2,6 +2,7 @@
 #define THREAD_SCENE_H
 
 #include <vector>
+#include <arcore/arcore.h>
 #include <data/file3d.h>
 #include <gl/glsl.h>
 #include <gl/renderer.h>
@@ -19,6 +20,8 @@ namespace oc {
         void SetupViewPort(int w, int h);
         void UpdateAnchors(std::vector<glm::vec3> pos, float zoom);
         void UpdateFrustum(glm::mat4 mvp);
+        void UpdatePlanes(const std::vector<DetectedPlane>& planes);
+        void UpdateFeaturePoints(const std::vector<glm::vec4>& points);
         void UpdateSelected(bool process);
 
         std::string ColorFragmentShader();
@@ -34,6 +37,8 @@ namespace oc {
         Mesh frustum_;
         Mesh grid_;
         Mesh selection_;
+        Mesh planes_mesh_;
+        Mesh feature_points_mesh_;
         std::vector<Mesh> static_meshes_;
         GLSL* color_vertex_shader;
         GLSL* depth_shader;

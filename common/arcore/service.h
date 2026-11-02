@@ -56,6 +56,8 @@ namespace oc {
 
         static std::vector<glm::mat4> GetPose(glm::mat4 projection, glm::mat4 view);
 
+        std::vector<DetectedPlane> GetPlanes();
+
         std::vector<glm::vec4> GetPointCloud(float maxDiff = INT_MAX);
 
         float GetPoseDiff() { return last_diff; }
