@@ -157,7 +157,6 @@ namespace oc {
                 glDisable(GL_BLEND);
             }
             if(!feature_points_mesh_.vertices.empty()) {
-                glPointSize(7.0f);
                 renderer->Render(&feature_points_mesh_.vertices[0].x, &feature_points_mesh_.vertices[0].x, 0,
                                  feature_points_mesh_.colors.data(), feature_points_mesh_.vertices.size(), 0, GL_POINTS);
             }
@@ -413,6 +412,7 @@ namespace oc {
                "varying vec4 f_color;\n"
                "void main() {\n"
                "  gl_Position = MVP * v_vertex;\n"
+               "  gl_PointSize = 8.0;\n"
                "  vec3 diff = abs(v_vertex.xyz - u_uniformCamera);\n"
                "  float dst = max(max(diff.x, diff.y), diff.z);\n"
                "  f_color = v_color * (1.0 - u_uniformNormals);\n"
