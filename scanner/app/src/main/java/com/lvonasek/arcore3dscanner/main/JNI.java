@@ -25,6 +25,9 @@ public class JNI
   // Setup the view port width and height.
   public static native void onGlSurfaceChanged(int width, int height, boolean fullhd);
 
+  // Diagnostics status from native layer
+  public static native String getDebugStatus();
+
   // Main render loop.
   public static native boolean onGlSurfaceDrawFrame(boolean faceMode, float yaw, int viewMode, boolean anchors, boolean grid, boolean smooth);
 

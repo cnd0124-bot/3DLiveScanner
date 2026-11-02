@@ -11,8 +11,8 @@ android {
         namespace ="com.lvonasek.arcore3dscanner"
         minSdkVersion 24
         targetSdkVersion 33
-        versionCode 220036
-        versionName "2.5-realityscan-matterport-direct-ar"
+        versionCode 220037
+        versionName "2.6-diagnostics"
         manifestPlaceholders = ['appAuthRedirectScheme': 'https://lvonasek.github.io/redirect.html']
         multiDexEnabled true
         ndk {

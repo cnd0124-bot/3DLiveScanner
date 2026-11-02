@@ -141,7 +141,9 @@ public class Main extends AbstractActivity implements View.OnClickListener,
   }
 
   void bindAR() {
+    Diagnostics.start(this);
     int mode = getARMode();
+    Diagnostics.append("bindAR mode=" + mode + " faceMode=" + isFaceModeOn(this) + " cameraFeed=" + isCameraFeedOn(this));
     if (!isFaceModeOn(this)) {
       runOnUiThread(() -> mViewButton.setVisibility(View.VISIBLE));
     }
@@ -214,6 +216,7 @@ public class Main extends AbstractActivity implements View.OnClickListener,
         return;
       }
     }
+    Diagnostics.append("onARServiceConnected OK path=" + t + " m3drRunning=" + m3drRunning + " photoMode=" + mPhotoMode + " viewCamera=" + mViewCamera);
     JNI.onToggleButtonClicked(m3drRunning);
     mCameraControl.updateView();
     final File input = new File(Service.getLink(Main.this));

@@ -77,6 +77,7 @@ namespace oc {
 
     bool App::OnDrawFrame(bool facemode, float compassYaw, int viewmode, bool anchors, bool grid, bool smooth) {
         reconstruction.render_mutex_.lock();
+        dbg_frames_++;
 
         //clear screen
         glClearColor(0, 0, 0, 0);
@@ -133,6 +134,7 @@ namespace oc {
             }
 
             if (ar->Process()) {
+                dbg_process_ok_++;
                 reconstruction.lost = false;
                 reconstruction.tracked = true;
                 glm::mat4 pose = ar->GetPose()[OPENGL_CAMERA];
@@ -266,6 +268,7 @@ namespace oc {
                     }
                 }
             } else {
+                dbg_process_fail_++;
                 reconstruction.lost = true;
             }
             reconstruction.scene.renderer->camera.projection = ar->GetProjection();
@@ -347,6 +350,27 @@ namespace oc {
         int error = glGetError();
         if (error > 0) {
             LOGI("GLERROR %d", error);
+            dbg_last_glerror_ = error;
+        }
+
+        if ((dbg_frames_ % 15) == 1) {
+            char buf[768];
+            snprintf(buf, sizeof(buf),
+                     "frames=%ld procOK=%ld procFail=%ld view=%d gl=%d\n"
+                     "%s\n"
+                     "drawPts=%d planeTris=%d voxels=%d rec=%d",
+                     dbg_frames_, dbg_process_ok_, dbg_process_fail_, viewmode, dbg_last_glerror_,
+                     ar ? ar->DebugInfo().c_str() : "AR service NULL",
+                     (int)reconstruction.scene.feature_points_mesh_.vertices.size(),
+                     (int)reconstruction.scene.planes_mesh_.vertices.size() / 3,
+                     (int)reconstruction.scan.Data().size(),
+                     reconstruction.t3dr_is_running_ ? 1 : 0);
+            dbg_mutex_.lock();
+            dbg_status_ = buf;
+            dbg_mutex_.unlock();
+            if ((dbg_frames_ % 150) == 1) {
+                LOGI("STATUS %s", buf);
+            }
         }
         return output || reconstruction.tracked;
     }
@@ -888,6 +912,13 @@ namespace oc {
         return output;
     }
 
+    std::string App::GetDebugStatus() {
+        dbg_mutex_.lock();
+        std::string out = dbg_status_;
+        dbg_mutex_.unlock();
+        return out;
+    }
+
     int App::GetScanSize() {
         reconstruction.render_mutex_.lock();
         int size = reconstruction.scan.Data().size();
@@ -1107,6 +1138,12 @@ Java_com_lvonasek_arcore3dscanner_main_JNI_setPhotoMode(JNIEnv *env, jclass claz
 JNIEXPORT jint JNICALL
 Java_com_lvonasek_arcore3dscanner_main_JNI_getScanSize(JNIEnv *env, jclass clazz) {
     return app.GetScanSize();
+}
+
+JNIEXPORT jstring JNICALL
+Java_com_lvonasek_arcore3dscanner_main_JNI_getDebugStatus(JNIEnv *env, jclass clazz) {
+    std::string status = app.GetDebugStatus();
+    return env->NewStringUTF(status.c_str());
 }
 
 #ifdef __cplusplus

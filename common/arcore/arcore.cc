@@ -21,6 +21,8 @@ namespace oc {
             if (status != AR_SUCCESS || !ar_session_) {
                 status = ArSession_create(env, context, &ar_session_);
             }
+            dbg_session_status = (int)status;
+            LOGI("ARCore ArSession_create status: %d", status);
             if (status != AR_SUCCESS || !ar_session_) {
                 LOGI("ARCore ArSession_create failed: %d", status);
                 return;
@@ -77,6 +79,8 @@ namespace oc {
                 configStatus = ArSession_configure(ar_session_, ar_config);
                 LOGI("Fallback ArSession_configure status: %d", configStatus);
             }
+            dbg_config_status = (int)configStatus;
+            LOGI("ARCore configure status=%d useDepth=%d raw=%d", configStatus, useDepth, useDepthRaw);
             ArConfig_destroy(ar_config);
             ArFrame_create(ar_session_, &ar_frame_);
         } else
@@ -197,7 +201,9 @@ namespace oc {
                 ArSession_setCameraTextureName(ar_session_, camera.GetTextureName());
                 texture_initialized_ = true;
             }
-            if (ArSession_update(ar_session_, ar_frame_) != AR_SUCCESS)
+            ArStatus upd = ArSession_update(ar_session_, ar_frame_);
+            dbg_update_status = (int)upd;
+            if (upd != AR_SUCCESS)
                 return false;
         }
 
@@ -210,6 +216,10 @@ namespace oc {
         ArTrackingState state = AR_TRACKING_STATE_STOPPED;
         if (!face_mode_) {
             ArCamera_getTrackingState(ar_session_, ar_camera, &state);
+            dbg_tracking_state = (int)state;
+            ArTrackingFailureReason reason = AR_TRACKING_FAILURE_REASON_NONE;
+            ArCamera_getTrackingFailureReason(ar_session_, ar_camera, &reason);
+            dbg_failure_reason = (int)reason;
             if (state == AR_TRACKING_STATE_STOPPED) {
                 ArCamera_release(ar_camera);
                 return false;
@@ -361,6 +371,7 @@ namespace oc {
         }
         ArTrackableList_destroy(plane_list);
 #endif
+        dbg_planes = (int)result.size();
         return result;
     }
 
@@ -820,6 +831,8 @@ namespace oc {
             }
         }
 
+        dbg_feature_points = (int)feature_points.size();
+        dbg_depth_points = (int)depth_points.size();
         if (!depth_points.empty()) {
             points = depth_points;
             for (auto& fp : feature_points) {

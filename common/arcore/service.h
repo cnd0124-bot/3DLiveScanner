@@ -80,6 +80,8 @@ namespace oc {
 
         void SetResolution(float res);
 
+        std::string DebugInfo();
+
     private:
         ARCore* google;
         AREngine* huawei;

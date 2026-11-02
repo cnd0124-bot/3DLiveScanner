@@ -48,6 +48,7 @@ namespace oc {
         void SetEvent(std::string value);
         void SetPhotoMode(bool on);
         int GetScanSize();
+        std::string GetDebugStatus();
 
         void Backup();
         void Restore();
@@ -79,6 +80,13 @@ namespace oc {
         float pitch, lastPitch;
         float yaw, lastYaw;
         float lowest;
+        //diagnostics
+        std::mutex dbg_mutex_;
+        std::string dbg_status_ = "native: no frame yet";
+        long dbg_frames_ = 0;
+        long dbg_process_ok_ = 0;
+        long dbg_process_fail_ = 0;
+        int dbg_last_glerror_ = 0;
     };
 }
 

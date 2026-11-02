@@ -265,4 +265,28 @@ namespace oc {
         else
             return google->GetDepthMap(false, true, 1);
     }
+
+    std::string ARCoreService::DebugInfo() {
+        char buf[512];
+        if (mode_ >= HUAWEI_SFM || !google) {
+            snprintf(buf, sizeof(buf), "backend=HUAWEI mode=%d", (int)mode_);
+            return buf;
+        }
+        const char* ts = "?";
+        switch (google->dbg_tracking_state) {
+            case 0: ts = "TRACKING"; break;
+            case 1: ts = "PAUSED"; break;
+            case 2: ts = "STOPPED"; break;
+            default: ts = "NONE"; break;
+        }
+        snprintf(buf, sizeof(buf),
+                 "mode=%d session=%d(%s) config=%d update=%d\n"
+                 "tracking=%s fail=%d depth=%d\n"
+                 "feature=%d depthPts=%d planes=%d",
+                 (int)mode_, google->dbg_session_status, google->HasSession() ? "ok" : "NULL",
+                 google->dbg_config_status, google->dbg_update_status,
+                 ts, google->dbg_failure_reason, google->UsesDepth() ? 1 : 0,
+                 google->dbg_feature_points, google->dbg_depth_points, google->dbg_planes);
+        return buf;
+    }
 }

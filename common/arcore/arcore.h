@@ -69,6 +69,18 @@ namespace oc {
 
         Image* GetDepthMap(bool confidence, bool increasing, int s = 1);
 
+        // diagnostics
+        int dbg_session_status = -999;
+        int dbg_config_status = -999;
+        int dbg_update_status = -999;
+        int dbg_tracking_state = -1;
+        int dbg_failure_reason = 0;
+        int dbg_feature_points = 0;
+        int dbg_depth_points = 0;
+        int dbg_planes = 0;
+        bool UsesDepth() { return useDepth; }
+        bool HasSession() { return ar_session_ != nullptr; }
+
     private:
         glm::mat4 GetMatrix(ArPose* ar_pose);
 
