@@ -175,7 +175,7 @@ namespace oc {
                                 reconstruction.event_mutex_.unlock();
                             }
 
-                            reconstruction.frame_sparse = ar->GetMode() == ARCoreService::HUAWEI_SFM;
+                            reconstruction.frame_sparse = (ar->GetMode() == ARCoreService::HUAWEI_SFM || ar->GetMode() == ARCoreService::GOOGLE_SFM);
                             if (reconstruction.t3dr_is_running_) {
                                 reconstruction.frame_points = ar->GetPointCloud(maxDiff);
 
@@ -283,7 +283,17 @@ namespace oc {
             reconstruction.scene.renderer->camera.position += glm::vec3(move.x, move.y, move.z);
         }
 
-        //render virtual objects (static meshes, frustum, selection, grid...)
+        // 1. RealityScan & Matterport: Render camera background first!
+        if (ar && ((viewmode == 1) || (viewmode == 2))) {
+            glDisable(GL_DEPTH_TEST);
+            glDisable(GL_CULL_FACE);
+            glDisable(GL_BLEND);
+            ar->RenderCamera(viewmode == 1 ? ARCoreCamera::NONE : ARCoreCamera::DEPTH_INV);
+            glEnable(GL_DEPTH_TEST);
+            glClear(GL_DEPTH_BUFFER_BIT);
+        }
+
+        // 2. Render virtual objects (RealityScan point cloud, Matterport planes, grid, anchors, frustum)
         reconstruction.scene.Render(gyro && zoomable);
         if (grid) {
             if (ar && zoomable) {
@@ -313,38 +323,25 @@ namespace oc {
             }
         }
 
-        //render scene
+        // 3. Render scanned 3D voxel mesh (if any voxels generated)
         glEnable(GL_BLEND);
-        glEnable(GL_STENCIL_TEST);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-        glStencilFunc(GL_ALWAYS, 1, 0xFF);
-        glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
         reconstruction.scene.BindMixedShader();
         bool output = OnDrawScan(reconstruction.scene.renderer->camera.position, zoomable);
         glDisable(GL_BLEND);
 
-        //camera preview
-        if (ar && ((viewmode == 1) || (viewmode == 2))) {
-            if (!reconstruction.scene.showNormals) {
-                glStencilFunc(GL_EQUAL, 1, 0xFF);
-                glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
-                ar->RenderCamera(ARCoreCamera::NONE);
-            }
-            glStencilFunc(GL_NOTEQUAL, 1, 0xFF);
-            ar->RenderCamera(viewmode == 1 ? ARCoreCamera::GRAYSCALE : ARCoreCamera::DEPTH_INV);
-        }
+        // 4. Picture-in-picture for Model view (viewmode == 0)
         if (ar && (viewmode == 0)) {
             glDisable(GL_DEPTH_TEST);
             int w = reconstruction.scene.renderer->width;
             int h = reconstruction.scene.renderer->height;
             glViewport(0, 5 * h / 6, w / 6, h / 6);
-            ar->RenderCamera();
+            ar->RenderCamera(ARCoreCamera::NONE);
             glViewport(5 * w / 6, 5 * h / 6, w / 6, h / 6);
             ar->RenderCamera(ARCoreCamera::DEPTH_INV, 4);
             glViewport(0, 0, w, h);
             glEnable(GL_DEPTH_TEST);
         }
-        glDisable(GL_STENCIL_TEST);
         reconstruction.render_mutex_.unlock();
 
         int error = glGetError();
@@ -404,6 +401,11 @@ namespace oc {
         for (Mesh& m : reconstruction.scene.static_meshes_)
             m.Destroy();
         reconstruction.scene.static_meshes_.clear();
+        reconstruction.scene.planes_mesh_.vertices.clear();
+        reconstruction.scene.planes_mesh_.normals.clear();
+        reconstruction.scene.planes_mesh_.colors.clear();
+        reconstruction.scene.feature_points_mesh_.vertices.clear();
+        reconstruction.scene.feature_points_mesh_.colors.clear();
 
         reconstruction.event_mutex_.lock();
         sprintf(reconstruction.pose_feedback, "");
@@ -445,6 +447,9 @@ namespace oc {
 
             //export pointcloud
             std::vector<Mesh> mesh = reconstruction.scan.Export();
+            if (mesh.empty() && !reconstruction.scene.feature_points_mesh_.vertices.empty()) {
+                mesh.push_back(reconstruction.scene.feature_points_mesh_);
+            }
             for (Mesh& m : mesh) {
                 for (unsigned int i = 0; i < m.vertices.size(); i++) {
                     p = m.vertices[i];
@@ -547,6 +552,12 @@ namespace oc {
                 m.Reindex();
                 m.GenerateFaceNormals();
                 reconstruction.scene.static_meshes_.push_back(m);
+            }
+            if (reconstruction.scene.static_meshes_.empty() && !reconstruction.scene.planes_mesh_.vertices.empty()) {
+                Mesh planeCopy = reconstruction.scene.planes_mesh_;
+                planeCopy.Reindex();
+                planeCopy.GenerateFaceNormals();
+                reconstruction.scene.static_meshes_.push_back(planeCopy);
             }
             File3d(filename, true).WriteModel(reconstruction.scene.static_meshes_);
             for (Mesh& m : reconstruction.scene.static_meshes_)
@@ -863,9 +874,16 @@ namespace oc {
     float App::GetView(int axis) {
         reconstruction.render_mutex_.lock();
         float output = 0;
-        if (axis == 0) output = lastMovex;
-        if (axis == 1) output = lastMovey;
-        if (axis == 2) output = lastMovez;
+        if (gyro) {
+            glm::vec3 cpos = reconstruction.scene.renderer->camera.position;
+            if (axis == 0) output = cpos.x;
+            if (axis == 1) output = cpos.y;
+            if (axis == 2) output = cpos.z;
+        } else {
+            if (axis == 0) output = lastMovex;
+            if (axis == 1) output = lastMovey;
+            if (axis == 2) output = lastMovez;
+        }
         reconstruction.render_mutex_.unlock();
         return output;
     }
@@ -875,6 +893,9 @@ namespace oc {
         int size = reconstruction.scan.Data().size();
         if (!reconstruction.scene.planes_mesh_.vertices.empty()) {
             size += reconstruction.scene.planes_mesh_.vertices.size() / 3;
+        }
+        if (!reconstruction.scene.feature_points_mesh_.vertices.empty()) {
+            size += reconstruction.scene.feature_points_mesh_.vertices.size();
         }
         if (reconstruction.dataset) {
             size += reconstruction.texturize.GetLatestIndex(reconstruction.dataset) + 1;
