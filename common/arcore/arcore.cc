@@ -299,7 +299,7 @@ namespace oc {
 
         for (int32_t i = 0; i < plane_list_size; i++) {
             ArTrackable* trackable = nullptr;
-            ArTrackableList_getItem(ar_session_, plane_list, i, &trackable);
+            ArTrackableList_acquireItem(ar_session_, plane_list, i, &trackable);
             ArPlane* ar_plane = ArAsPlane(trackable);
 
             ArPlane* subsumed_by = nullptr;
